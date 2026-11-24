@@ -19,7 +19,16 @@ export default function TerminalView({ launch, onReady, onExit, active }: { laun
     const fit = new FitAddon(); fitRef.current = fit; term.loadAddon(fit); term.open(container.current);
     const resize = () => { try { fit.fit(); if (id) void request('terminal.resize', { id, cols: term.cols, rows: term.rows }).catch(() => {}); } catch { /* Hidden tabs have no layout. */ } };
     const observer = new ResizeObserver(resize); observer.observe(container.current);
-    const input = term.onData(data => { if (id) void request('terminal.input', { id, data }).catch(e => setError(String(e))); });
+    let inputQueue: Promise<unknown> = Promise.resolve();
+    const input = term.onData(data => {
+      if (!id) return;
+      for (let start = 0; start < data.length;) {
+        let end = Math.min(start + 8192, data.length);
+        if (end < data.length && data.charCodeAt(end - 1) >= 0xd800 && data.charCodeAt(end - 1) <= 0xdbff) end--;
+        const part = data.slice(start, end); start = end;
+        inputQueue = inputQueue.then(() => disposed ? undefined : request('terminal.input', { id, data: part })).catch(e => { if (!disposed) setError(String(e)); });
+      }
+    });
     void (async () => {
       cleanOutput = await subscribe<{ id: string; data: string }>('terminal:output', event => { if (!id) { if (pending.length < 200) pending.push(event); } else if (event.id === id) term.write(event.data); });
       if (disposed) { cleanOutput(); return; }

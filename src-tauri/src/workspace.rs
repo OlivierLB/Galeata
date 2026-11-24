@@ -83,9 +83,9 @@ impl Workspace {
 
 /// Bounded, timed subprocess capture. Arguments never pass through a shell.
 pub fn run(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Duration,limit:usize)->Result<String>{
-    run_outcome(root,program,args,codes,timeout,limit).map(|(output,_)|output)
+    run_outcome(root,program,args,codes,timeout,limit).map(|(output,_,_)|output)
 }
-pub fn run_outcome(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Duration,limit:usize)->Result<(String,i32)>{
+pub fn run_outcome(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Duration,limit:usize)->Result<(String,i32,String)>{
     let mut child=Command::new(program).args(args).current_dir(root).env("GIT_TERMINAL_PROMPT","0").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e|format!("{program}: {e}"))?;
     let stdout=child.stdout.take().ok_or("stdout indisponible")?;let stderr=child.stderr.take().ok_or("stderr indisponible")?;
     let out=std::thread::spawn(move||{let mut v=Vec::new();stdout.take(limit as u64+1).read_to_end(&mut v).map(|_|v)});
@@ -96,7 +96,7 @@ pub fn run_outcome(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Dur
     let errors=err.join().map_err(|_|"Lecture interrompue")?.map_err(|e|e.to_string())?;
     if !codes.contains(&status.code().unwrap_or(-1)){return Err(format!("{program}: {}",String::from_utf8_lossy(&errors).chars().take(2000).collect::<String>()))}
     if bytes.len()>limit{return Err("Résultat trop volumineux : affinez la recherche ou sélectionnez un fichier".into())}
-    Ok((String::from_utf8_lossy(&bytes).into_owned(),status.code().unwrap_or(-1)))
+    Ok((String::from_utf8_lossy(&bytes).into_owned(),status.code().unwrap_or(-1),String::from_utf8_lossy(&errors).into_owned()))
 }
 
 #[cfg(test)] mod tests{

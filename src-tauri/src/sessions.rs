@@ -4,10 +4,10 @@ use std::{fs,io::{Read,Seek,SeekFrom},path::{Path,PathBuf},time::Duration};
 
 fn home()->PathBuf{std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default()}
 pub fn providers()->Value{
-    json!(["codex","claude"].iter().map(|provider|{
+    let providers=["codex","claude"].iter().map(|provider|{
         let version=run(&home(),provider,&["--version"],&[0],Duration::from_secs(5),8192);
         json!({"id":provider,"available":version.is_ok(),"version":version.unwrap_or_default().lines().filter(|l|!l.starts_with("WARNING")).collect::<Vec<_>>().join(" "),"capabilities":["terminal","resume","mcp","session_discovery"],"subagents":"historical_metadata_only"})
-    }).collect::<Vec<_>>())
+    }).collect::<Vec<_>>();json!(providers)
 }
 fn collect(path:&Path,depth:usize,out:&mut Vec<PathBuf>){
     if depth==0||out.len()>=5000{return}

@@ -30,7 +30,7 @@ Le socket est dans un répertoire de mode `0700` et possède le mode `0600`. Une
 | `git.get_diff` | `path`, `staged?` | Versions originale/modifiée et patch |
 | `plan.get` | Aucun | Objectif, étapes et révision |
 | `plan.update_step` | `revision`, `id`, `status`, `note?` | Nouveau plan |
-| `plan.propose_change` | `reason`, `objective`, `steps` | Proposition à examiner dans l’activité |
+| `plan.propose_change` | `revision`, `reason`, `objective`, `steps` | Proposition à examiner dans l’activité |
 | `activity.report` | `message`, `sessionId`, `status`, `parentId?`, `files?`, `stepId?` | Événement daté |
 | `verification.record` | `message`, `command`, `exitCode`, `stepId?`, `sessionId?` | Rapport déclaré |
 | `session.save_handoff` | `message`, `sessionId`, `nextAction`, `stepId?` | Passation persistée |

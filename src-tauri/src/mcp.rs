@@ -12,7 +12,7 @@ pub fn tools()->Value{
         ("git.get_diff","Lire le diff d’un fichier",json!({"path":string,"staged":{"type":"boolean"}}),vec!["path"]),
         ("plan.get","Lire le plan et sa révision avant une mise à jour",json!({}),vec![]),
         ("plan.update_step","Mettre à jour une étape existante sans changer son objectif. done indique une déclaration de l’agent, pas une vérification.",json!({"revision":integer,"id":string,"status":{"type":"string","enum":["pending","in_progress","blocked","done"]},"note":string}),vec!["revision","id","status"]),
-        ("plan.propose_change","Proposer un changement de périmètre à valider dans Galeata",json!({"reason":string,"objective":string,"steps":{"type":"array","items":{"type":"object"}}}),vec!["reason","objective","steps"]),
+        ("plan.propose_change","Proposer un changement de périmètre à valider dans Galeata",json!({"revision":integer,"reason":string,"objective":string,"steps":{"type":"array","items":{"type":"object"}}}),vec!["revision","reason","objective","steps"]),
         ("activity.report","Déclarer une activité, un blocage ou une mission de sous-agent",json!({"message":string,"sessionId":string,"parentId":string,"stepId":string,"status":{"type":"string","enum":["running","blocked","done"]},"files":{"type":"array","items":string}}),vec!["message","sessionId","status"]),
         ("verification.record","Rapporter une vérification avec provenance agent_reported",json!({"message":string,"stepId":string,"command":string,"exitCode":{"type":"integer"},"sessionId":string}),vec!["message","command","exitCode"]),
         ("session.save_handoff","Enregistrer une passation pour reprendre le travail",json!({"message":string,"sessionId":string,"nextAction":string,"stepId":string}),vec!["message","sessionId","nextAction"]),
@@ -27,7 +27,7 @@ pub fn response(request:&Value,call:impl FnOnce(&str,Value)->Result<Value>)->Opt
         "initialize"=>{
             let requested=request["params"]["protocolVersion"].as_str().unwrap_or("");
             let version=if ["2024-11-05","2025-03-26","2025-06-18"].contains(&requested){requested}else{"2025-06-18"};
-            Ok(json!({"protocolVersion":version,"serverInfo":{"name":"galeata","version":env!("CARGO_PKG_VERSION")},"capabilities":{"tools":{"listChanged":false}},"instructions":"Utiliser plan.get avant plan.update_step. Rapporter activité et passation avec sessionId. Ne jamais déclarer une vérification observée par Galeata : les rapports MCP restent agent_reported. Les changements d’objectif passent par plan.propose_change."}))
+            Ok(json!({"protocolVersion":version,"serverInfo":{"name":"galeata","version":env!("CARGO_PKG_VERSION")},"capabilities":{"tools":{"listChanged":false}},"instructions":"Vous travaillez depuis Galeata. Commencez une mission par workspace.get_context et plan.get. Déclarez votre mission avec activity.report, un sessionId stable, votre état et vos fichiers concernés ; actualisez la déclaration aux changements d’état. Mettez à jour les étapes avec plan.update_step en passant la révision lue. Tout changement d’objectif ou d’étapes passe par plan.propose_change avec cette révision, jamais par une réécriture silencieuse. En fin de mission, enregistrez les vérifications avec verification.record et une passation avec session.save_handoff. Les vérifications MCP restent agent_reported."}))
         },
         "ping"=>Ok(json!({})),
         "tools/list"=>Ok(json!({"tools":tools()})),

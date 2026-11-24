@@ -43,6 +43,9 @@ jobs:
       - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets
       - run: cargo build --release --manifest-path src-tauri/Cargo.toml --bins
       - run: npm run package -- --bundles deb
+      - name: Export initial dependency snapshot
+        if: always()
+        run: node scripts/export-lockfiles.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
