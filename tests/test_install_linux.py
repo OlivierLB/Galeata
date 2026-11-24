@@ -50,6 +50,9 @@ class InstallationTests(unittest.TestCase):
         desktop = self.data / "applications/dev.olivierlb.galeata.desktop"
         self.assertIn('Name=Galeata', desktop.read_text())
         self.assertIn('Exec="', desktop.read_text())
+        if shutil.which("desktop-file-validate"):
+            validated = subprocess.run(["desktop-file-validate", str(desktop)], text=True, capture_output=True)
+            self.assertEqual(validated.returncode, 0, validated.stdout + validated.stderr)
         current = self.data / "galeata/current"
         self.assertTrue(current.is_symlink())
         self.assertTrue((current / "usr/bin/galeata-mcp").is_file())

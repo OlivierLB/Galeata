@@ -80,7 +80,7 @@ def install(args):
                 run(["gh", "run", "download", str(run_id), "--repo", REPOSITORY, "--name", "galeata-linux-deb", "--dir", str(temporary / "download")])
             except RuntimeError as error:
                 raise RuntimeError(f"Téléchargement impossible. Vérifiez le réseau et la connexion GitHub avec gh auth login.\n{error}") from error
-            packages = list((temporary / "download").glob("*.deb"))
+            packages = list((temporary / "download").rglob("*.deb"))
             if len(packages) != 1:
                 raise RuntimeError("Le téléchargement ne contient pas un unique paquet Debian.")
             archive = packages[0]
