@@ -6,6 +6,10 @@ use tauri::{AppHandle,Emitter,Manager};
 
 pub struct TerminalHandle { pub writer:Box<dyn Write+Send>,pub master:Box<dyn MasterPty+Send>,pub killer:Box<dyn ChildKiller+Send+Sync> }
 pub type Terminals=Arc<Mutex<HashMap<String,TerminalHandle>>>;
+pub fn bridge_path(app:&AppHandle)->Result<std::path::PathBuf>{
+    let sibling=std::env::current_exe().map_err(|e|e.to_string())?.with_file_name("galeata-mcp");
+    Ok(if sibling.is_file(){sibling}else{app.path().resource_dir().map_err(|e|e.to_string())?.join("galeata-mcp")})
+}
 
 pub fn start(app:AppHandle,terminals:&Terminals,w:&Workspace,kind:&str,session:Option<&str>,socket:&Path)->Result<Value>{
     if let Some(id)=session{uuid::Uuid::parse_str(id).map_err(|_|"Identifiant de session invalide")?;}
@@ -14,8 +18,7 @@ pub fn start(app:AppHandle,terminals:&Terminals,w:&Workspace,kind:&str,session:O
         "codex"|"claude"=>CommandBuilder::new(kind),
         _=>return Err("Outil inconnu".into())
     };
-    let sibling=std::env::current_exe().map_err(|e|e.to_string())?.with_file_name("galeata-mcp");
-    let bridge=if sibling.is_file(){sibling}else{app.path().resource_dir().map_err(|e|e.to_string())?.join("galeata-mcp")};
+    let bridge=bridge_path(&app)?;
     let bridge_available=bridge.is_file();
     let bridge_args=json!(["--socket",socket.to_string_lossy(),"--workspace",w.id]);
     if kind=="codex"{

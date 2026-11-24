@@ -3,11 +3,15 @@ import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
 import JsonWorker from 'monaco-editor/esm/vs/language/json/json.worker?worker';
+import CssWorker from 'monaco-editor/esm/vs/language/css/css.worker?worker';
+import HtmlWorker from 'monaco-editor/esm/vs/language/html/html.worker?worker';
 import type { OpenFile } from '../types.ts';
 
 (self as unknown as { MonacoEnvironment: monaco.Environment }).MonacoEnvironment = { getWorker(_id: string, label: string) {
   if (label === 'typescript' || label === 'javascript') return new TypeScriptWorker();
   if (label === 'json') return new JsonWorker();
+  if (label === 'css' || label === 'scss' || label === 'less') return new CssWorker();
+  if (label === 'html' || label === 'handlebars' || label === 'razor') return new HtmlWorker();
   return new EditorWorker();
 } };
 monaco.editor.defineTheme('galeata', {
@@ -25,13 +29,13 @@ export default function EditorSurface({ file, diff, onChange, onSave, line }: { 
     if (!container.current) return;
     const options: monaco.editor.IStandaloneEditorConstructionOptions = { theme: 'galeata', automaticLayout: true, fontSize: 13, fontFamily: '"JetBrains Mono", "Cascadia Code", "DejaVu Sans Mono", monospace', lineHeight: 23, padding: { top: 22 }, minimap: { enabled: false }, scrollBeyondLastLine: false, smoothScrolling: true, tabSize: 2, renderLineHighlight: 'line', wordWrap: 'off', bracketPairColorization: { enabled: true } };
     if (diff) {
-      const original = monaco.editor.createModel(diff.original, file.language);
-      const modified = monaco.editor.createModel(diff.modified, file.language);
+      const original = monaco.editor.createModel(diff.original, file.language, monaco.Uri.parse(`inmemory://galeata/original/${encodeURIComponent(file.path)}`));
+      const modified = monaco.editor.createModel(diff.modified, file.language, monaco.Uri.parse(`inmemory://galeata/modified/${encodeURIComponent(file.path)}`));
       const editor = monaco.editor.createDiffEditor(container.current, { ...options, readOnly: true, renderSideBySide: true });
       editor.setModel({ original, modified });
       return () => { editor.dispose(); original.dispose(); modified.dispose(); };
     }
-    const model = monaco.editor.createModel(file.content, file.language);
+    const model = monaco.editor.createModel(file.content, file.language, monaco.Uri.parse(`inmemory://galeata/editor/${encodeURIComponent(file.path)}`));
     const editor = monaco.editor.create(container.current, { ...options, model }); editorRef.current = editor;
     const listener = model.onDidChangeContent(() => changeRef.current(model.getValue()));
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current());

@@ -64,7 +64,7 @@ impl State {
             "remote.detail" if !agent=>remote::detail(&self.store,&w,args["id"].as_u64().ok_or("Identifiant requis")?),
             "preferences.get" if !agent=>self.store.preference(&w.id,"layout"),
             "preferences.save" if !agent=>{self.store.set_preference(&w.id,"layout",&args)?;Ok(Value::Null)},
-            "mcp.config" if !agent=>Ok(json!({"socket":self.socket,"workspaceId":w.id,"bridge":std::env::current_exe().map_err(|e|e.to_string())?.with_file_name("galeata-mcp"),"tools":mcp::tools()})),
+            "mcp.config" if !agent=>{let bridge=terminal::bridge_path(app)?;Ok(json!({"socket":self.socket,"workspaceId":w.id,"bridgeAvailable":bridge.is_file(),"bridge":bridge,"tools":mcp::tools()}))},
             _=>Err(format!("Action inconnue ou non autorisée : {method}"))
         }
     }
