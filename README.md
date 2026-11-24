@@ -4,7 +4,27 @@ Un IDE local pour développer avec vos agents : fichiers, code, terminal, Git, p
 
 **Version 0.1.0 en développement. Linux uniquement pour cette première version.** La compilation, les tests et le paquet Debian sont validés dans la CI. Les essais interactifs et les connexions aux comptes restent à effectuer ; voir [l’état des vérifications](docs/validation.md).
 
-## Démarrer
+## Installer l’application sur Linux
+
+Le paquet natif est construit sur Ubuntu 22.04 pour prendre en charge Pop!_OS 22.04 et les distributions compatibles plus récentes. Il n’est pas nécessaire d’installer Rust pour utiliser l’application.
+
+Depuis le dossier du projet :
+
+```sh
+python3 scripts/install-linux.py
+```
+
+L’installateur télécharge la dernière compilation réussie via GitHub CLI (`gh`), vérifie les bibliothèques système et ajoute **Galeata au menu des applications**, avec une commande `~/.local/bin/galeata`. L’installation reste dans votre compte, sans sudo, et conserve les plans et préférences existants. Les chemins des outils disponibles au moment de l’installation sont transmis au lanceur pour retrouver Codex, Claude Code et ripgrep depuis le bureau.
+
+Si GitHub CLI demande une connexion, utilisez `gh auth login`. Une archive ZIP ou un paquet Debian déjà téléchargé peut aussi être utilisé :
+
+```sh
+python3 scripts/install-linux.py --archive /chemin/vers/galeata-linux-deb.zip
+```
+
+L’installation utilisateur utilise `~/.local/share/galeata`. Elle est distincte du stockage des plans et sessions de l’application. Vous pouvez aussi installer le paquet Debian avec le gestionnaire de paquets système.
+
+## Développer et compiler
 
 Prérequis : Node.js 24+, Rust stable avec Cargo, Git, ripgrep et les dépendances Linux de Tauri 2. Sous Ubuntu/Debian :
 
