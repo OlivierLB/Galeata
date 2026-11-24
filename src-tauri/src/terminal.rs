@@ -40,7 +40,7 @@ pub fn start(app:AppHandle,terminals:&Terminals,w:&Workspace,kind:&str,session:O
 }
 fn pump(app:AppHandle,terminals:Terminals,id:String,mut reader:Box<dyn Read+Send>,mut child:Box<dyn Child+Send+Sync>){
     let mut bytes=[0u8;4096];let mut pending=Vec::new();let mut frame=std::time::Instant::now();let mut frame_bytes=0;
-    while let Ok(size)=reader.read(&mut bytes){if size==0{break}pending.extend_from_slice(&bytes[..size]);let valid=match std::str::from_utf8(&pending){Ok(_)=>pending.len(),Err(e) if e.error_len().is_none()=>e.valid_up_to(),Err(_)=>pending.len()};if valid>0{let data=String::from_utf8_lossy(&pending[..valid]).into_owned();let _=app.emit("terminal:output",json!({"id":id,"data":data}));pending.drain(..valid);}frame_bytes+=size;if frame_bytes>=65536{let budget=std::time::Duration::from_millis(16);if frame.elapsed()<budget{std::thread::sleep(budget-frame.elapsed());}frame=std::time::Instant::now();frame_bytes=0;}}
+    while let Ok(size)=reader.read(&mut bytes){if size==0{break}pending.extend_from_slice(&bytes[..size]);let valid=match std::str::from_utf8(&pending){Ok(_)=>pending.len(),Err(e) if e.error_len().is_none()=>e.valid_up_to(),Err(_)=>pending.len()};if valid>0{let data=String::from_utf8_lossy(&pending[..valid]).into_owned();let _=app.emit("terminal:output",json!({"id":id,"data":data}));pending.drain(..valid);}frame_bytes+=size;if frame_bytes>=65536{let budget=std::time::Duration::from_millis(16);if frame.elapsed()<budget{std::thread::sleep(budget.saturating_sub(frame.elapsed()));}frame=std::time::Instant::now();frame_bytes=0;}}
     let status=child.wait().map(|s|s.exit_code()).unwrap_or(1);if let Ok(mut map)=terminals.lock(){map.remove(&id);}
     let _=app.emit("terminal:exit",json!({"id":id,"code":status}));
 }

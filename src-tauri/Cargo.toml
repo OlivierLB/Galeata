@@ -38,6 +38,7 @@ thiserror = "2"
 ureq = { version = "2.12", features = ["json"] }
 keyring = { version = "3", features = ["sync-secret-service"] }
 url = "2"
+nix = { version = "0.29", features = ["signal", "process"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -86,21 +86,30 @@ pub fn run(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Duration,li
     run_outcome(root,program,args,codes,timeout,limit).map(|(output,_,_)|output)
 }
 pub fn run_outcome(root:&Path,program:&str,args:&[&str],codes:&[i32],timeout:Duration,limit:usize)->Result<(String,i32,String)>{
-    let mut child=Command::new(program).args(args).current_dir(root).env("GIT_TERMINAL_PROMPT","0").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().map_err(|e|format!("{program}: {e}"))?;
+    let mut command=Command::new(program);command.args(args).current_dir(root).env("GIT_TERMINAL_PROMPT","0").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]{use std::os::unix::process::CommandExt;command.process_group(0);}
+    let mut child=command.spawn().map_err(|e|format!("{program}: {e}"))?;
     let stdout=child.stdout.take().ok_or("stdout indisponible")?;let stderr=child.stderr.take().ok_or("stderr indisponible")?;
-    let out=std::thread::spawn(move||{let mut v=Vec::new();stdout.take(limit as u64+1).read_to_end(&mut v).map(|_|v)});
-    let err=std::thread::spawn(move||{let mut v=Vec::new();stderr.take(65537).read_to_end(&mut v).map(|_|v)});
+    let (out_tx,out_rx)=std::sync::mpsc::sync_channel(1);let (err_tx,err_rx)=std::sync::mpsc::sync_channel(1);
+    std::thread::spawn(move||{let mut v=Vec::new();let result=stdout.take(limit as u64+1).read_to_end(&mut v).map(|_|v);let _=out_tx.send(result);});
+    std::thread::spawn(move||{let mut v=Vec::new();let result=stderr.take(65537).read_to_end(&mut v).map(|_|v);let _=err_tx.send(result);});
     let started=std::time::Instant::now();
-    let status=loop{if let Some(s)=child.try_wait().map_err(|e|e.to_string())?{break s}if started.elapsed()>timeout{let _=child.kill();let _=child.wait();return Err(format!("{program}: délai dépassé"))}std::thread::sleep(Duration::from_millis(20));};
-    let bytes=out.join().map_err(|_|"Lecture interrompue")?.map_err(|e|e.to_string())?;
-    let errors=err.join().map_err(|_|"Lecture interrompue")?.map_err(|e|e.to_string())?;
+    let status=loop{if let Some(s)=child.try_wait().map_err(|e|e.to_string())?{break s}if started.elapsed()>timeout{kill_group(&mut child);return Err(format!("{program}: délai dépassé"))}std::thread::sleep(Duration::from_millis(20));};
+    let remaining=||timeout.saturating_sub(started.elapsed());
+    let bytes=match out_rx.recv_timeout(remaining()){Ok(v)=>v.map_err(|e|e.to_string())?,Err(_)=>{kill_group(&mut child);return Err(format!("{program}: délai de lecture dépassé"))}};
+    let errors=match err_rx.recv_timeout(remaining()){Ok(v)=>v.map_err(|e|e.to_string())?,Err(_)=>{kill_group(&mut child);return Err(format!("{program}: délai de lecture dépassé"))}};
     if !codes.contains(&status.code().unwrap_or(-1)){return Err(format!("{program}: {}",String::from_utf8_lossy(&errors).chars().take(2000).collect::<String>()))}
     if bytes.len()>limit{return Err("Résultat trop volumineux : affinez la recherche ou sélectionnez un fichier".into())}
     Ok((String::from_utf8_lossy(&bytes).into_owned(),status.code().unwrap_or(-1),String::from_utf8_lossy(&errors).into_owned()))
+}
+fn kill_group(child:&mut std::process::Child){
+    #[cfg(unix)]{let _=nix::sys::signal::killpg(nix::unistd::Pid::from_raw(child.id() as i32),nix::sys::signal::Signal::SIGKILL);}
+    let _=child.kill();let _=child.wait();
 }
 
 #[cfg(test)] mod tests{
     use super::*;
     #[test]fn confines_paths_and_detects_external_changes(){let dir=tempfile::tempdir().unwrap();fs::write(dir.path().join("a.txt"),"one").unwrap();let w=Workspace::open(dir.path().to_str().unwrap()).unwrap();assert!(w.resolve("../etc",false).is_err());assert!(w.resolve("/etc/passwd",false).is_err());let file=w.read("a.txt").unwrap();fs::write(dir.path().join("a.txt"),"two").unwrap();assert!(w.write("a.txt","three",file["stamp"].as_str().unwrap()).is_err());assert_eq!(w.read("a.txt").unwrap()["content"],"two");}
     #[cfg(unix)]#[test]fn rejects_external_symlink(){let dir=tempfile::tempdir().unwrap();std::os::unix::fs::symlink("/etc/passwd",dir.path().join("secret")).unwrap();let w=Workspace::open(dir.path().to_str().unwrap()).unwrap();assert!(w.resolve("secret",false).is_err());}
+    #[cfg(unix)]#[test]fn inherited_output_cannot_block_a_request_forever(){let dir=tempfile::tempdir().unwrap();let started=std::time::Instant::now();let result=run(dir.path(),"/bin/sh",&["-c","sleep 30 & printf done"],&[0],Duration::from_millis(150),4096);assert!(result.is_err());assert!(started.elapsed()<Duration::from_secs(3));}
 }

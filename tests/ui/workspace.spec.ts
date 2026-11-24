@@ -1,7 +1,10 @@
 import { expect, test } from '@playwright/test';
 
-test('explorer, rechercher et ouvrir un fichier sans annoncer de connexion locale', async ({ page }) => {
-  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message));
+test('explorer, rechercher et ouvrir un fichier sans annoncer de connexion locale', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await expect(page.getByText('APERÇU INTERFACE')).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Plan du projet' })).toBeVisible();
@@ -15,10 +18,14 @@ test('explorer, rechercher et ouvrir un fichier sans annoncer de connexion local
   expect(errors).toEqual([]);
 });
 
-test('modifier le plan, retrouver son historique et le conserver après rechargement', async ({ page }) => {
+test('modifier le plan, retrouver son historique et le conserver après rechargement', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Modifier l’objectif' }).click();
-  await page.getByRole('textbox', { name: 'Objectif', exact: true }).fill('Livrer une mission vérifiable');
+  await page
+    .getByRole('textbox', { name: 'Objectif', exact: true })
+    .fill('Livrer une mission vérifiable');
   await page.getByRole('button', { name: 'Enregistrer', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Livrer une mission vérifiable' })).toBeVisible();
   await page.getByRole('button', { name: 'Ajouter une étape' }).click();

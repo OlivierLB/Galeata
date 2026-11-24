@@ -84,8 +84,8 @@ async fn open_workspace(app:tauri::AppHandle,path:String)->Result<Value>{
         if !state.terminals.lock().map_err(|e|e.to_string())?.is_empty(){return Err("Fermez les terminaux et agents avant de changer de dossier".into())}
         let event_app=app.clone();let workspace_id=w.id.clone();let last=Arc::new(Mutex::new(std::time::Instant::now()-Duration::from_secs(1)));
         let mut watcher=notify::recommended_watcher(move|event:std::result::Result<notify::Event,notify::Error>|{if let Ok(event)=event{if let Ok(mut instant)=last.lock(){if instant.elapsed()>Duration::from_millis(200){*instant=std::time::Instant::now();let _=event_app.emit("workspace:changed",json!({"workspaceId":workspace_id,"paths":event.paths}));}}}}).map_err(|e|e.to_string())?;
-        watcher.watch(&w.root,RecursiveMode::Recursive).map_err(|e|e.to_string())?;
-        *state.watcher.lock().map_err(|e|e.to_string())?=Some(watcher);
+        let watched=match watcher.watch(&w.root,RecursiveMode::Recursive){Ok(())=>Some(watcher),Err(error)=>{let _=state.store.record(&w.id,"capability","galeata","Surveillance des fichiers indisponible : actualisez Git et l’arborescence manuellement",json!({"reason":error.to_string()}));None}};
+        *state.watcher.lock().map_err(|e|e.to_string())?=watched;
         *state.workspace.lock().map_err(|e|e.to_string())?=Some(w.clone());
         Ok(json!(w))
     }).await.map_err(|e|e.to_string())?

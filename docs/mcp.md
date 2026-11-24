@@ -21,21 +21,21 @@ Le socket est dans un répertoire de mode `0700` et possède le mode `0600`. Une
 
 ## Contrat initial
 
-| Outil | Arguments essentiels | Résultat |
-|---|---|---|
-| `workspace.search_files` | `query`, `offset?` | `items`, `nextOffset` |
-| `workspace.search_text` | `query`, `offset?` | Fichier, ligne, texte et prochaine page |
-| `workspace.get_context` | Aucun | Projet, Git, plan, AGENTS.md / CLAUDE.md à la racine |
-| `git.get_status` | Aucun | Branche et changements locaux |
-| `git.get_diff` | `path`, `staged?` | Versions originale/modifiée et patch |
-| `plan.get` | Aucun | Objectif, étapes et révision |
-| `plan.update_step` | `revision`, `id`, `status`, `note?` | Nouveau plan |
-| `plan.propose_change` | `revision`, `reason`, `objective`, `steps` | Proposition à examiner dans l’activité |
-| `activity.report` | `message`, `sessionId`, `status`, `parentId?`, `files?`, `stepId?` | Événement daté |
-| `verification.record` | `message`, `command`, `exitCode`, `stepId?`, `sessionId?` | Rapport déclaré |
-| `session.save_handoff` | `message`, `sessionId`, `nextAction`, `stepId?` | Passation persistée |
-| `ui.open_file` | `path`, `line?` | Demande d’affichage |
-| `ui.show_diff` | `path`, `staged?` | Demande d’affichage |
+| Outil                    | Arguments essentiels                                               | Résultat                                             |
+| ------------------------ | ------------------------------------------------------------------ | ---------------------------------------------------- |
+| `workspace.search_files` | `query`, `offset?`                                                 | `items`, `nextOffset`                                |
+| `workspace.search_text`  | `query`, `offset?`                                                 | Fichier, ligne, texte et prochaine page              |
+| `workspace.get_context`  | Aucun                                                              | Projet, Git, plan, AGENTS.md / CLAUDE.md à la racine |
+| `git.get_status`         | Aucun                                                              | Branche et changements locaux                        |
+| `git.get_diff`           | `path`, `staged?`                                                  | Versions originale/modifiée et patch                 |
+| `plan.get`               | Aucun                                                              | Objectif, étapes et révision                         |
+| `plan.update_step`       | `revision`, `id`, `status`, `note?`                                | Nouveau plan                                         |
+| `plan.propose_change`    | `revision`, `reason`, `objective`, `steps`                         | Proposition à examiner dans l’activité               |
+| `activity.report`        | `message`, `sessionId`, `status`, `parentId?`, `files?`, `stepId?` | Événement daté                                       |
+| `verification.record`    | `message`, `command`, `exitCode`, `stepId?`, `sessionId?`          | Rapport déclaré                                      |
+| `session.save_handoff`   | `message`, `sessionId`, `nextAction`, `stepId?`                    | Passation persistée                                  |
+| `ui.open_file`           | `path`, `line?`                                                    | Demande d’affichage                                  |
+| `ui.show_diff`           | `path`, `staged?`                                                  | Demande d’affichage                                  |
 
 Les états d’étape sont `pending`, `in_progress`, `blocked`, `done`. Les états d’activité sont `running`, `blocked`, `done`. Aucun outil MCP n’exécute une commande système, ne modifie un fichier, ne pousse Git ou ne lit un jeton.
 
