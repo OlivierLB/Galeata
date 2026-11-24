@@ -1,37 +1,52 @@
-# État de validation — première implémentation
+# État de validation — Galeata 0.1.0
 
-Ce document distingue les résultats obtenus des vérifications encore nécessaires. Il ne constitue pas une certification des intégrations natives.
+La [CI Linux de la version consolidée](https://github.com/OlivierLB/Galeata/actions/runs/45374979066) a réussi. Les résultats ci-dessous distinguent les contrôles automatiques des essais interactifs restant à effectuer.
 
-## Exécuté dans l’environnement de développement
+## Vérifications réussies
 
-- Tests Node 24 : trois cas de domaine et quatre cas d’aperçu passent. Refus des capacités locales dans l’aperçu, navigation vers un buffer, conflit de révision et isolation des mutations sont couverts.
-- Compilation de tous les composants avec esbuild local : réussie, en externalisant les dépendances absentes (Tauri, Monaco et xterm).
-- Vérification TypeScript des sources avec les types React locaux et des déclarations temporaires pour les dépendances absentes : réussie. Elle ne remplace pas `npm run build` avec les dépendances officielles.
-- Analyse syntaxique Tree-sitter des 11 fichiers Rust : aucune erreur. Elle ne remplace ni le compilateur ni Clippy.
-- Rendu Firefox headless à 1 500 × 950 : inspecté visuellement. L’éditeur de secours s’affiche explicitement lorsque Monaco est absent.
-- Le dépôt distant a été consulté via le connecteur GitHub. Le clonage Git et l’accès au registre npm échouent ici par résolution DNS.
+Sur Ubuntu 24.04, avec Node 24 et Rust stable :
 
-## Non exécuté ici
+- Vérification TypeScript et compilation Vite avec les dépendances officielles et Monaco.
+- **7 tests JavaScript** : domaine, limites de l’aperçu, navigation vers un buffer, conflits de révision et isolation des mutations du plan.
+- **3 parcours Playwright Chromium** : exploration/recherche, fournisseurs indisponibles en aperçu, modification et persistance du plan, palette clavier et panneau repliable.
+- **10 tests Rust** : persistance et atomicité plan/événement, conflit de révision, validation du plan, confinement des chemins et liens symboliques, conflit avec une modification externe.
+- Ces tests couvrent aussi le transport MCP, les arguments inconnus, le dépôt Git temporaire avec chemin Unicode et espace, le staging, les diffs, la désindexation et la suppression d’un dossier.
+- Un test vérifie qu’un sous-processus conservant une sortie ouverte ne bloque pas indéfiniment une commande.
+- Clippy, compilation Linux optimisée et génération du paquet Debian.
+- Extraction du paquet : présence et permissions exécutables de Galeata et de sa passerelle MCP ; exécution réelle de la passerelle et réponse JSON-RPC indiquant l’absence de l’IDE.
 
-- Installation complète npm et génération des lockfiles : registre inaccessible.
-- `cargo test`, Clippy, compilation et packaging Tauri : Rust, Cargo, GTK et WebKitGTK absents.
-- Parcours Playwright : le démarrage du serveur HTTP local est interdit dans cet environnement. Le rendu headless depuis un fichier a pu être contrôlé séparément.
-- Connexion réelle aux CLI via PTY, reprise, coffre système, serveur MCP et services GitHub/GitLab depuis le binaire.
-- Tests de charge et budgets de démarrage, mémoire et recherche.
+Les lockfiles npm et Cargo proviennent de cette exécution. Le code Rust a été formaté avec rustfmt avant les tests, puis réintégré dans le dépôt. La CI utilise désormais les dépendances verrouillées et contrôle le format Rust.
 
-## Tests fournis pour la machine équipée / CI
+## Vérifications locales complémentaires
 
-- Rust : persistance et atomicité plan/événement, conflit de révision, validation du plan, chemins absolus/parents/liens symboliques, conflit avec une modification externe.
-- Rust : notifications MCP, erreurs d’outils, arguments inconnus, liste des capacités.
-- Rust : dépôt Git temporaire, chemin Unicode avec espace, staging, commit, diff indexé/non indexé, désindexation, suppression d’un dossier et refus de chemin externe.
-- Playwright : navigation/recherche, fournisseurs indisponibles en aperçu, modification et persistance du plan, palette clavier et panneau repliable.
-- GitHub Actions : tests et build frontend, Playwright Chromium, tests Rust, Clippy et compilation Linux.
+- Rendu Firefox headless à 1 500 × 950, inspecté visuellement.
+- Éditeur simplifié explicitement affiché lorsque Monaco n’est pas disponible.
+- Tests Node et compilation de l’interface avec les outils disponibles localement.
+- Historique et arbres Git locaux synchronisés avec les commits publiés, en contrôlant leurs SHA.
 
-## Avant une première distribution
+Le réseau du shell local ne permettait ni le clonage Git ni l’accès au registre npm ; Rust, Cargo, GTK et WebKitGTK n’y étaient pas installés. Le connecteur GitHub a permis de publier le code et de vérifier sa compilation sur les runners Linux. L’application de bureau n’a donc pas été lancée interactivement sur ce poste.
 
-1. Installer les prérequis et exécuter `npm install`, puis committer les lockfiles obtenus après vérification.
-2. Exécuter les tests et compiler le binaire natif ; résoudre les éventuelles incompatibilités avec les versions résolues des dépendances.
-3. Ouvrir un projet jetable, tester les conflits de fichiers, fermer avec des buffers modifiés et restaurer les onglets.
-4. Lancer puis reprendre Codex et Claude Code ; vérifier `initialize`, `tools/list`, une recherche, une mise à jour concurrente et une proposition via MCP.
-5. Connecter des dépôts de test GitHub et GitLab avec jetons limités ; tester les réponses 401/403, le réseau indisponible, les diffs et la CI.
-6. Mesurer les budgets du plan sur une machine et un dépôt de référence documentés avant de les annoncer comme atteints.
+## Essais restant à effectuer
+
+- Parcours interactif natif : ouverture d’un dossier, édition, terminal, sauvegarde, fermeture avec buffers modifiés et restauration des onglets.
+- Lancement et reprise réels de Codex et Claude Code ; mise à jour du plan via leur connexion MCP, plusieurs agents et passations.
+- Coffre Secret Service et connexions à des comptes GitHub/GitLab, y compris jetons expirés, accès refusés et indisponibilité réseau.
+- Charge sur de gros dépôts, mémoire et budgets de démarrage/recherche. Les valeurs du plan restent des objectifs, pas des mesures obtenues.
+- Installation sur d’autres distributions Linux ; aucun support macOS ou Windows annoncé pour cette version.
+
+## Reproduire les contrôles
+
+```sh
+npm ci
+npm test
+npm run build
+npx playwright install chromium
+npm run test:ui
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --locked --manifest-path src-tauri/Cargo.toml
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets
+npm run package -- --bundles deb
+node scripts/check-package.mjs
+```
+
+Les prérequis Linux sont détaillés dans le README. Le paquet est disponible dans les artefacts du workflow, sans constituer une publication de version stable.

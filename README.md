@@ -2,7 +2,7 @@
 
 Un IDE local pour développer avec vos agents : fichiers, code, terminal, Git, plan vivant et reprise de sessions dans le même espace.
 
-**Version 0.1.0 en développement. Linux uniquement pour cette première version.** Le code natif et les intégrations distantes demandent encore une validation sur une machine équipée de Rust et WebKitGTK ; voir [l’état des vérifications](docs/validation.md).
+**Version 0.1.0 en développement. Linux uniquement pour cette première version.** La compilation, les tests et le paquet Debian sont validés dans la CI. Les essais interactifs et les connexions aux comptes restent à effectuer ; voir [l’état des vérifications](docs/validation.md).
 
 ## Démarrer
 
@@ -18,7 +18,7 @@ Installer Rust depuis son installateur officiel si nécessaire, puis :
 ```sh
 git clone https://github.com/OlivierLB/Galeata.git
 cd Galeata
-npm install
+npm ci
 npm run doctor
 npm run desktop
 ```
@@ -30,7 +30,7 @@ npm run dev       # Aperçu navigateur, données d’exemple explicitement ident
 npm run build     # Vérification TypeScript et compilation de l’interface
 npm test          # Tests du domaine et de l’aperçu (Node 24)
 npm run test:ui   # Parcours Playwright, après npx playwright install chromium
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --locked --manifest-path src-tauri/Cargo.toml
 npm run package  # Compilation et paquets Linux .deb / AppImage
 ```
 
@@ -46,7 +46,7 @@ La version navigateur ne peut ni accéder aux fichiers locaux, ni exécuter de t
 - Lancement et reprise de Codex / Claude Code ; découverte locale de leurs sessions associées au dossier.
 - Activité et sous-agents déclarés via MCP ; métadonnées historiques lorsqu’elles sont disponibles ; passations et signalement des fichiers revendiqués par plusieurs agents.
 - Connexions GitHub / GitLab, demandes ouvertes, fichiers modifiés et résultats CI. Jetons conservés dans le coffre Linux Secret Service.
-- Restauration des fichiers ouverts, palette `Ctrl P`, sauvegarde `Ctrl S`, panneau terminal `Ctrl ` + accent grave.
+- Restauration des fichiers ouverts, palette `Ctrl P`, sauvegarde `Ctrl S`, panneau terminal avec Ctrl et la touche accent grave.
 
 Une étape annoncée terminée ne signifie pas que ses tests ont réussi. Les vérifications rapportées par un agent conservent la provenance `agent_reported`. Un statut d’agent est une déclaration datée, pas une déduction à partir du texte du terminal.
 
@@ -76,7 +76,7 @@ Les données de l’IDE résident dans le répertoire applicatif Linux de Tauri,
 - Les conflits Git se traitent dans l’éditeur ou le terminal ; aucune fusion automatique n’est déclenchée.
 - Un coffre Secret Service fonctionnel est requis pour les jetons d’API. Aucun stockage en clair de secours.
 
-Les budgets de performance du plan sont des objectifs, pas des résultats mesurés. La compilation native, les mesures sur un dépôt de 50 000 fichiers et les essais d’intégration font partie des prochaines validations.
+Les budgets de performance du plan sont des objectifs, pas des résultats mesurés. Les mesures sur un dépôt de 50 000 fichiers et les essais interactifs d’intégration restent à effectuer.
 
 ## Identité
 

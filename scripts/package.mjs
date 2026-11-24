@@ -12,6 +12,7 @@ function run(program, args) {
 run('npm', ['run', 'build']);
 run('cargo', [
   'build',
+  '--locked',
   '--release',
   '--manifest-path',
   'src-tauri/Cargo.toml',
