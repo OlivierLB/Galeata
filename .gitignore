@@ -1,0 +1,12 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+playwright-report/
+test-results/
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.sock
+.DS_Store
