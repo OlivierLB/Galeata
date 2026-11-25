@@ -118,17 +118,17 @@ for (const provider of ['claude', 'codex']) {
     await input.fill('Suite B');
     await input.press('Tab');
     const queue = chat.getByRole('region', { name: 'File d’attente des messages' });
-    await expect(queue).toContainText('2 messages en attente');
+    await expect(queue.getByRole('listitem')).toHaveCount(2);
     await expect(chat.locator('.chat-user')).toHaveCount(3);
     // Leaving the conversation does not discard its queue.
     await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
     await page.getByRole('tablist', { name: 'Conversations' }).getByRole('tab').first().click();
-    await expect(queue).toContainText('2 messages en attente');
+    await expect(queue.getByRole('listitem')).toHaveCount(2);
     await approval.getByRole('button', { name: 'Autoriser', exact: true }).click();
     const question = chat.getByRole('region', { name: 'Question de l’agent' });
     await expect(question).toBeVisible();
     await expect(chat.locator('.chat-user').last()).toHaveText('Suite A');
-    await expect(queue).toContainText('1 message en attente');
+    await expect(queue.getByRole('listitem')).toHaveCount(1);
     await expect(chat.locator('.chat-user')).toHaveCount(4);
     await question.getByRole('radio', { includeHidden: true, name: /Bleu/ }).click();
     await expect(chat.getByRole('region', { name: 'Plan proposé' })).toBeVisible();

@@ -1,3 +1,5 @@
+import { ChoiceGroup } from './components/ChoicePicker.tsx';
+import { applyTheme, readTheme, type Theme } from './theme.ts';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { desktop, getActiveWorkspace, openWorkspace, request, subscribe } from './api.ts';
 import { languageFor, relativeTime } from './domain.ts';
@@ -74,6 +76,7 @@ const navigation: { id: Panel; icon: string; label: string }[] = [
 ];
 
 export default function App() {
+  const [theme, setTheme] = useState<Theme>(readTheme);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [panel, setPanel] = useState<Panel>('agents');
   const [mascotAgent, setMascotAgent] = useState('');
@@ -134,7 +137,7 @@ export default function App() {
   );
   // Space left for a side panel once the conversation keeps its minimum width.
   const sideRoom = (other: number) =>
-    (layoutRef.current?.clientWidth ?? Infinity) - 55 - other - editorMinWidth;
+    (layoutRef.current?.clientWidth ?? Infinity) - 76 - other - editorMinWidth;
   const planShown = planVisible && !!workspace;
   const reviewing = panel === 'git' && !!workspace;
   const filesPage = panel === 'files' && !!workspace;
@@ -1150,7 +1153,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          <img src="/galeata-logo.svg" alt="Galeata" />
+          <img src={theme === 'night' ? '/galeata-logo-night.svg' : '/galeata-logo.svg'} alt="Galeata" />
         </div>
         <div className="topbar-divider" />
         <button className="workspace-picker" onClick={openFolder}>
@@ -1195,7 +1198,7 @@ export default function App() {
       <main className="workspace-layout" ref={layoutRef}>
         <nav className="activity-rail" aria-label="Navigation principale">
           <div>
-            {navigation.map((item) => (
+            {navigation.map((item, index) => (
               <button
                 key={item.id}
                 className={`rail-button ${panel === item.id ? 'active' : ''}`}
@@ -1204,7 +1207,9 @@ export default function App() {
                 aria-pressed={panel === item.id}
                 onClick={() => navigate(item.id)}
               >
-                <Icon name={item.icon} size={21} />
+                <span className="rail-index" aria-hidden="true">0{index + 1}</span>
+                <Icon name={item.icon} size={19} />
+                <span className="rail-label" aria-hidden="true">{item.id === 'agents' ? 'Agents' : item.label}</span>
                 {item.id === 'git' && git.files.length ? (
                   <span className="rail-count">{git.files.length}</span>
                 ) : item.id === 'agents' && activeCount ? (
@@ -1565,6 +1570,10 @@ export default function App() {
               {panel === 'settings' ? (
                 <div className="sidebar-content">
                   <p className="section-caption">GALEATA 0.1.0 · LINUX</p>
+                  <div className="section-line"><h3>Apparence</h3></div>
+                  <ChoiceGroup className="segmented" label="Apparence" value={theme}
+                    options={[{ id: 'paper', label: 'Papier' }, { id: 'night', label: 'Charbon' }]}
+                    onChange={value => { applyTheme(value as Theme); setTheme(value as Theme); }} />
                   <h3>Un espace local</h3>
                   <p className="small-copy muted">
                     Plans et historique restent sur votre machine. Aucun compte Galeata ni
@@ -1577,53 +1586,23 @@ export default function App() {
                     Lancé par le bouton « + » des conversations. Si celui-ci n’est pas installé,
                     l’autre est utilisé.
                   </p>
-                  <div className="segmented" role="radiogroup" aria-label="Agent par défaut">
-                    {(['claude', 'codex'] as AgentProvider[]).map((id) => {
-                      const info = providers.find((provider) => provider.id === id);
-                      return (
-                        <button
-                          key={id}
-                          role="radio"
-                          aria-checked={defaultAgent === id}
-                          className={defaultAgent === id ? 'active' : ''}
-                          title={info?.error ?? undefined}
-                          onClick={() => {
-                            setDefaultAgent(id);
-                            writeDefaultAgent(id);
-                          }}
-                        >
-                          {providerNames[id]}
-                          {desktop && info && !info.available ? ' · indisponible' : ''}
-                        </button>
-                      );
+                  <ChoiceGroup className="segmented" label="Agent par défaut" value={defaultAgent}
+                    options={(['claude', 'codex'] as AgentProvider[]).map(id => {
+                      const info = providers.find(provider => provider.id === id);
+                      return { id, label: providerNames[id] + (desktop && info && !info.available ? ' · indisponible' : ''), hint: info?.error ?? undefined };
                     })}
-                  </div>
+                    onChange={value => { setDefaultAgent(value as AgentProvider); writeDefaultAgent(value as AgentProvider); }} />
                   {(['claude', 'codex'] as AgentProvider[]).map((agentId) => (
                     <div key={agentId}>
                       <div className="section-line">
                         <h3>Mode de {providerNames[agentId]} au démarrage</h3>
                       </div>
-                      <div
-                        className="segmented"
-                        role="radiogroup"
-                        aria-label={`Mode de ${providerNames[agentId]} au démarrage`}
-                      >
-                        {agentModes[agentId].map((mode) => (
-                          <button
-                            key={mode.id}
-                            role="radio"
-                            aria-checked={startModes[agentId] === mode.id}
-                            className={`${startModes[agentId] === mode.id ? 'active' : ''} ${mode.danger ? 'danger' : ''}`}
-                            title={mode.hint}
-                            onClick={() => {
-                              setStartModes((previous) => ({ ...previous, [agentId]: mode.id }));
-                              writeStartMode(agentId, mode.id);
-                            }}
-                          >
-                            {mode.label}
-                          </button>
-                        ))}
-                      </div>
+                      <ChoiceGroup className="segmented" label={`Mode de ${providerNames[agentId]} au démarrage`}
+                        value={startModes[agentId]} options={agentModes[agentId]}
+                        onChange={value => {
+                          setStartModes(previous => ({ ...previous, [agentId]: value }));
+                          writeStartMode(agentId, value);
+                        }} />
                     </div>
                   ))}
                   <p className="small-copy muted">

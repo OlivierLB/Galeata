@@ -1,3 +1,4 @@
+import MessageQueue from './MessageQueue.tsx';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { request } from '../api.ts';
 import { compactAgent, listAgentSkills, setAgentMode, type SkillOption } from '../agents/api.ts';
@@ -307,43 +308,9 @@ export function AgentComposer({
   return (
     <div className={`chat-composer ${mode === 'plan' ? 'composer-planning' : ''}`}>
       {conversation.queuedMessages.length ? (
-        <section className="composer-queue" aria-label="File d’attente des messages">
-          <header>
-            <strong>
-              {conversation.queuedMessages.length} message
-              {conversation.queuedMessages.length > 1 ? 's' : ''} en attente
-            </strong>
-            <span role="status">
-              {exited
-                ? 'Agent arrêté'
-                : conversation.queuePaused
-                  ? 'En pause'
-                  : 'Après la fin complète du tour en cours'}
-            </span>
-            <button
-              className="text-button"
-              disabled={exited}
-              onClick={() => agentStore.pauseQueue(id, !conversation.queuePaused)}
-            >
-              {conversation.queuePaused ? 'Reprendre la file' : 'Mettre la file en pause'}
-            </button>
-          </header>
-          <ol>
-            {conversation.queuedMessages.map((message, index) => (
-              <li key={message.id}>
-                <span className="queue-order">{index + 1}</span>
-                <p>{message.text}</p>
-                <button
-                  className="icon-button"
-                  aria-label={`Retirer le message ${index + 1} de la file`}
-                  onClick={() => agentStore.removeQueued(id, message.id)}
-                >
-                  <Icon name="close" size={12} />
-                </button>
-              </li>
-            ))}
-          </ol>
-        </section>
+        <MessageQueue messages={conversation.queuedMessages} paused={conversation.queuePaused} exited={exited}
+          onPause={paused => agentStore.pauseQueue(id, paused)}
+          onRemove={messageId => agentStore.removeQueued(id, messageId)} />
       ) : null}
       {menu ? (
         <section

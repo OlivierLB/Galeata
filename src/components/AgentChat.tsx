@@ -1,4 +1,6 @@
-import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import ChatMessage from './ChatMessage.tsx';
+import { ChoicePicker } from './ChoicePicker.tsx';
+import { memo, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { agentStore } from '../agents/store.ts';
 import {
   answerAgent,
@@ -52,19 +54,17 @@ const ItemView = memo(function ItemView({
   if (item.kind === 'question') return <QuestionCard item={item} actions={actions} />;
   if (item.kind === 'user')
     return (
-      <div className="chat-item chat-user">
-        <div className="chat-bubble">{item.text}</div>
-      </div>
+      <ChatMessage side="user">{item.text}</ChatMessage>
     );
   if (item.kind === 'assistant')
     return (
-      <div className="chat-item chat-assistant">
+      <ChatMessage side="assistant">
         {item.streaming ? (
           <div className="chat-streaming">{item.text}</div>
         ) : (
           <Markdown text={item.text} />
         )}
-      </div>
+      </ChatMessage>
     );
   if (item.kind === 'reasoning')
     return (
@@ -259,41 +259,10 @@ function ApprovalCard({
 
 /** Permission mode of a conversation; Shift+Tab in the composer cycles it. */
 function ModeSwitch({ id, provider, mode }: { id: string; provider: Provider; mode?: string }) {
-  const picker = useRef<HTMLDetailsElement>(null);
-  useEffect(() => {
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !picker.current?.contains(event.target) && picker.current)
-        picker.current.open = false;
-    };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
-  }, []);
-  return (
-    <details className="composer-mode-picker" ref={picker}>
-      <summary title="Changer de mode (Maj+Tab)">
-        {agentModes[provider].find((option) => option.id === mode)?.label ?? 'Mode'} <span>⌄</span>
-      </summary>
-      <div className="mode-switch" role="radiogroup" aria-label="Mode d’autorisation">
-        {agentModes[provider].map((option) => (
-          <button
-            key={option.id}
-            role="radio"
-            aria-checked={mode === option.id}
-            className={`${mode === option.id ? 'active' : ''} ${option.danger ? 'danger' : ''}`}
-            title={option.hint}
-            onClick={() => {
-              if (picker.current) picker.current.open = false;
-              void setAgentMode(id, option.id).catch((error) =>
-                agentStore.apply(id, [{ type: 'error', message: String(error) }]),
-              );
-            }}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
-    </details>
-  );
+  return <ChoicePicker label="Mode d’autorisation" title="Changer de mode (Maj+Tab)"
+    value={mode} options={agentModes[provider]} fallback="Mode"
+    onChange={next => { void setAgentMode(id, next).catch(error =>
+      agentStore.apply(id, [{ type: 'error', message: String(error) }])); }} />;
 }
 
 function ModelSwitch({ conversation }: { conversation: Conversation }) {
@@ -304,33 +273,17 @@ function ModelSwitch({ conversation }: { conversation: Conversation }) {
     models.find((option) => option.resolvedModel === model) ??
     (!model ? models.find((option) => option.id === 'default') : undefined);
   const value = selected?.id ?? model ?? '';
-  return (
-    <label className="model-picker">
-      <select
-        aria-label={`Modèle ${providerNames[provider]}`}
-        title={selected?.description || 'Modèle utilisé pour le prochain message'}
-        value={value}
-        disabled={changing || busy || state !== 'idle' || !models.length}
-        onChange={(event) => {
-          setChanging(true);
-          void setAgentModel(id, event.target.value)
-            .catch((error) => agentStore.apply(id, [{ type: 'error', message: String(error) }]))
-            .finally(() => setChanging(false));
-        }}
-      >
-        {!selected ? (
-          <option value={value}>
-            {model || (state === 'starting' ? 'Chargement…' : 'Modèle actuel')}
-          </option>
-        ) : null}
-        {models.map((option) => (
-          <option key={option.id} value={option.id} title={option.description}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  return <ChoicePicker className="model-choice" label={`Modèle ${providerNames[provider]}`}
+    title={selected?.description || 'Modèle utilisé pour le prochain message'}
+    value={value} options={models.map(option => ({ ...option, hint: option.description }))}
+    fallback={model || (state === 'starting' ? 'Chargement…' : 'Modèle actuel')}
+    disabled={changing || busy || state !== 'idle' || !models.length}
+    onChange={next => {
+      setChanging(true);
+      void setAgentModel(id, next)
+        .catch(error => agentStore.apply(id, [{ type: 'error', message: String(error) }]))
+        .finally(() => setChanging(false));
+    }} />;
 }
 
 export default function AgentChat({

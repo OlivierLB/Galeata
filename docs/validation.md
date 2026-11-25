@@ -57,3 +57,12 @@ node scripts/check-package.mjs
 ```
 
 Les prérequis Linux sont détaillés dans le README. Le paquet est disponible dans les artefacts du workflow, sans constituer une publication de version stable.
+
+
+### Composants React
+
+`npm run test:components` exécute Vitest avec jsdom et Testing Library ; cette suite est aussi incluse dans `npm test`.
+`ChoicePicker` et `ChoiceGroup` sont partagés entre les modèles, les modes et les préférences.
+Les tests isolés couvrent sélection, état désactivé, fermeture, focus et navigation clavier.
+Les tests Playwright conservent les vérifications de branchement aux conversations, de persistance et de parcours.
+Un test de composant ne remplace pas la validation visuelle native ni les parcours métier.

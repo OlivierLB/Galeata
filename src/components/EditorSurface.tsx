@@ -17,27 +17,38 @@ import type { OpenFile } from '../types.ts';
   },
 };
 monaco.editor.defineTheme('galeata', {
-  base: 'vs-dark',
+  base: 'vs',
   inherit: true,
   rules: [
     { token: 'comment', foreground: '69758D', fontStyle: 'italic' },
-    { token: 'keyword', foreground: 'BFA9F6' },
-    { token: 'string', foreground: '9CCAB3' },
-    { token: 'number', foreground: 'E5B88A' },
+    { token: 'keyword', foreground: '65537D' },
+    { token: 'string', foreground: '42694B' },
+    { token: 'number', foreground: '88601F' },
   ],
   colors: {
-    'editor.background': '#141620',
-    'editor.foreground': '#CDD3E3',
-    'editorLineNumber.foreground': '#4B5369',
-    'editorLineNumber.activeForeground': '#BFA9F6',
-    'editor.lineHighlightBackground': '#1B1E2C',
-    'editor.selectionBackground': '#BFA9F62C',
-    'editorCursor.foreground': '#BFA9F6',
-    'editorIndentGuide.background1': '#252938',
-    'editorWidget.background': '#1B1E2C',
-    'editorOverviewRuler.border': '#141620',
+    'editor.background': '#faf6eb',
+    'editor.foreground': '#292c27',
+    'editorLineNumber.foreground': '#68665d',
+    'editorLineNumber.activeForeground': '#46614b',
+    'editor.lineHighlightBackground': '#e5dece',
+    'editor.selectionBackground': '#46614b2C',
+    'editorCursor.foreground': '#46614b',
+    'editorIndentGuide.background1': '#cec6b5',
+    'editorWidget.background': '#e5dece',
+    'editorOverviewRuler.border': '#faf6eb',
   },
 });
+
+monaco.editor.defineTheme('galeata-night', {
+  base: 'vs-dark', inherit: true, rules: [],
+  colors: { 'editor.background': '#282725', 'editor.foreground': '#eee6d5',
+    'editorLineNumber.foreground': '#b2ac9c', 'editorCursor.foreground': '#c7d8a8',
+    'editor.selectionBackground': '#535847', 'editor.lineHighlightBackground': '#34322f' },
+});
+function syncEditorTheme() {
+  monaco.editor.setTheme(document.documentElement.dataset.theme === 'night' ? 'galeata-night' : 'galeata');
+}
+window.addEventListener('galeata:theme', syncEditorTheme);
 
 export default function EditorSurface({
   file,
@@ -62,7 +73,7 @@ export default function EditorSurface({
   useEffect(() => {
     if (!container.current) return;
     const options: monaco.editor.IStandaloneEditorConstructionOptions = {
-      theme: 'galeata',
+      theme: document.documentElement.dataset.theme === 'night' ? 'galeata-night' : 'galeata',
       automaticLayout: true,
       fontSize: 13,
       fontFamily: '"JetBrains Mono", "Cascadia Code", "DejaVu Sans Mono", monospace',

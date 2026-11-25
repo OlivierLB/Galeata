@@ -38,21 +38,21 @@ export default function TerminalView({
       fontSize: 12,
       fontFamily: '"DejaVu Sans Mono", monospace',
       scrollback: 5000,
-      theme: {
-        background: '#11131c',
-        foreground: '#cdd3e3',
-        cursor: '#bfa9f6',
-        selectionBackground: '#bfa9f640',
-        black: '#252938',
-        red: '#ec939b',
-        green: '#95c7a9',
-        yellow: '#e6c38e',
-        blue: '#8ea9e8',
-        magenta: '#bfa9f6',
-        cyan: '#88c9d0',
-        white: '#dce0ec',
-      },
+
     });
+    const syncTheme = () => {
+      const night = document.documentElement.dataset.theme === 'night';
+      term.options.theme = {
+        background: night ? '#282725' : '#faf6eb', foreground: night ? '#eee6d5' : '#292c27',
+        cursor: night ? '#c7d8a8' : '#46614b', selectionBackground: '#82976860',
+        black: night ? '#919783' : '#292c27', red: night ? '#f0aba0' : '#a34136',
+        green: night ? '#b8d2aa' : '#42694b', yellow: night ? '#e6c48a' : '#88601f',
+        blue: night ? '#afc8da' : '#3c5b70', magenta: night ? '#d3badf' : '#71517e',
+        cyan: night ? '#a6d2ca' : '#386960', white: night ? '#eee6d5' : '#514f46',
+      };
+    };
+    syncTheme();
+    window.addEventListener('galeata:theme', syncTheme);
     const fit = new FitAddon();
     fitRef.current = fit;
     term.loadAddon(fit);
@@ -140,6 +140,7 @@ export default function TerminalView({
       cleanExit?.();
       observer.disconnect();
       input.dispose();
+      window.removeEventListener('galeata:theme', syncTheme);
       term.dispose();
       if (id) void request('terminal.close', { id }).catch(() => {});
     };

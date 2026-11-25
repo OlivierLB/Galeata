@@ -11,23 +11,21 @@ for (const provider of ['claude', 'codex'] as const) {
       .getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true })
       .click();
     const name = provider === 'claude' ? 'Modèle Claude Code' : 'Modèle Codex';
-    const picker = page.getByRole('combobox', { name, exact: true });
-    const original = provider === 'claude' ? 'demo-sonnet' : 'demo-codex';
-    const selected = provider === 'claude' ? 'demo-opus' : 'demo-codex-fast';
-    await expect(picker).toHaveValue(original);
-    await picker.selectOption(selected);
-    await expect(picker).toHaveValue(selected);
+    const picker = page.locator('summary').and(page.getByLabel(name, { exact: true }));
+    await picker.click();
+    await page.getByRole('radiogroup', { name, exact: true }).getByRole('radio', { name: provider === 'claude' ? 'Opus (démo)' : 'Codex rapide (démo)', exact: true }).click();
+    await expect(picker).toContainText(provider === 'claude' ? 'Opus' : 'Codex rapide');
     const other = provider === 'claude' ? 'Modèle Codex' : 'Modèle Claude Code';
-    await expect(page.getByRole('combobox', { name: other, exact: true })).toHaveCount(0);
+    await expect(page.locator('summary').and(page.getByLabel(other, { exact: true }))).toHaveCount(0);
     await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
-    await expect(picker).toHaveValue(original);
+    await expect(picker).toContainText(provider === 'claude' ? 'Sonnet' : 'Codex');
     await page.getByRole('tablist', { name: 'Conversations' }).getByRole('tab').first().click();
-    await expect(picker).toHaveValue(selected);
+    await expect(picker).toContainText(provider === 'claude' ? 'Opus' : 'Codex rapide');
     const composer = page.getByRole('textbox', { name: 'Message à l’agent' });
     await composer.fill('Réponds exactement : ok');
     await composer.press('Enter');
     await expect(page.locator('.chat-assistant')).toHaveText('ok');
-    await expect(picker).toHaveValue(selected);
+    await expect(picker).toContainText(provider === 'claude' ? 'Opus' : 'Codex rapide');
   });
 }
 
@@ -333,12 +331,12 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
   await expect(
     modes.getByRole('radio', { includeHidden: true, name: 'Plan', exact: true }),
   ).toHaveAttribute('aria-checked', 'true');
-  await chat.locator('.composer-mode-picker > summary').click();
+  await chat.locator('summary').and(chat.getByLabel('Mode d’autorisation', { exact: true })).click();
   await modes.getByRole('radio', { includeHidden: true, name: 'Sans limite' }).click();
   await expect(
     modes.getByRole('radio', { includeHidden: true, name: 'Sans limite' }),
   ).toHaveAttribute('aria-checked', 'true');
-  await chat.locator('.composer-mode-picker > summary').click();
+  await chat.locator('summary').and(chat.getByLabel('Mode d’autorisation', { exact: true })).click();
   await modes.getByRole('radio', { includeHidden: true, name: 'Demander' }).click();
 
   for (const text of ['un', 'deux', 'trois']) {
