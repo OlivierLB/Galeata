@@ -122,6 +122,8 @@ export interface Conversation {
   /** Permission mode reported by the agent. */
   mode?: string;
   busy: boolean;
+  queuedMessages: { id: string; text: string }[];
+  queuePaused: boolean;
   sessionId?: string;
   model?: string | null;
   models: ModelOption[];

@@ -2,9 +2,14 @@ import { expect, test } from '@playwright/test';
 
 for (const provider of ['claude', 'codex'] as const) {
   test(`select the ${provider} model independently for each AI conversation`, async ({ page }) => {
-    await page.addInitScript((preferred) => localStorage.setItem('galeata:default-agent', preferred), provider);
+    await page.addInitScript(
+      (preferred) => localStorage.setItem('galeata:default-agent', preferred),
+      provider,
+    );
     await page.goto('/');
-    await page.getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true }).click();
+    await page
+      .getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true })
+      .click();
     const name = provider === 'claude' ? 'Modèle Claude Code' : 'Modèle Codex';
     const picker = page.getByRole('combobox', { name, exact: true });
     const original = provider === 'claude' ? 'demo-sonnet' : 'demo-codex';
@@ -146,7 +151,9 @@ test('l’IA au centre : conversation rejouée, outil, autorisation et code à l
   await expect(chat).toBeVisible();
   const composer = page.getByRole('textbox', { name: 'Message à l’agent' });
   await expect(composer).toBeFocused();
-  const mascot = page.getByRole('navigation', { name: 'Navigation principale' }).locator('.turtle-mascot');
+  const mascot = page
+    .getByRole('navigation', { name: 'Navigation principale' })
+    .locator('.turtle-mascot');
   await expect(mascot).toHaveAttribute('data-animation', 'idle');
 
   await composer.fill('Réponds exactement : ok');
@@ -207,17 +214,16 @@ test('l’agent par défaut se choisit dans les préférences et reste mémoris�
   await page.goto('/');
   await page.getByRole('button', { name: 'Préférences', exact: true }).click();
   const choice = page.getByRole('radiogroup', { name: 'Agent par défaut' });
-  await expect(choice.getByRole('radio', { name: /Claude Code/ })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await choice.getByRole('radio', { name: /Codex/ }).click();
+  await expect(
+    choice.getByRole('radio', { includeHidden: true, name: /Claude Code/ }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await choice.getByRole('radio', { includeHidden: true, name: /Codex/ }).click();
   await page.reload();
   await page.getByRole('button', { name: 'Préférences', exact: true }).click();
   await expect(
     page
       .getByRole('radiogroup', { name: 'Agent par défaut' })
-      .getByRole('radio', { name: /Codex/ }),
+      .getByRole('radio', { includeHidden: true, name: /Codex/ }),
   ).toHaveAttribute('aria-checked', 'true');
 });
 
@@ -282,9 +288,11 @@ test('questions et plan proposés : options cliquables, plan lisible et décisio
   await composer.press('Enter');
   const question = chat.getByRole('region', { name: 'Question de l’agent' });
   await expect(question).toContainText('Quelle est ta couleur préférée ?');
-  await expect(question.getByRole('radio', { name: /Rouge/ })).toContainText('La couleur rouge');
+  await expect(question.getByRole('radio', { includeHidden: true, name: /Rouge/ })).toContainText(
+    'La couleur rouge',
+  );
   await expect(chat.getByText('AskUserQuestion')).toHaveCount(0);
-  await question.getByRole('radio', { name: /Bleu/ }).click();
+  await question.getByRole('radio', { includeHidden: true, name: /Bleu/ }).click();
   await expect(question).toContainText('Réponse : Bleu');
   await expect(chat.locator('.chat-assistant').getByText('Bleu', { exact: true })).toBeVisible();
 
@@ -307,13 +315,12 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
     .getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true })
     .click();
   const chat = page.getByRole('region', { name: 'Conversation Claude Code' });
-  const modes = chat.getByRole('radiogroup', { name: 'Mode d’autorisation' });
+  const modes = chat.getByRole('radiogroup', { name: 'Mode d’autorisation', includeHidden: true });
   // Auto by default, like the user's terminal.
-  await expect(modes.getByRole('radio', { name: 'Auto', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await expect(modes.getByRole('radio')).toHaveText([
+  await expect(
+    modes.getByRole('radio', { includeHidden: true, name: 'Auto', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await expect(modes.getByRole('radio', { includeHidden: true })).toHaveText([
     'Plan',
     'Demander',
     'Modifs auto',
@@ -323,16 +330,16 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
   const composer = page.getByRole('textbox', { name: 'Message à l’agent' });
   // Shift+Tab cycles but never lands on "Sans limite".
   await composer.press('Shift+Tab');
-  await expect(modes.getByRole('radio', { name: 'Plan', exact: true })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await modes.getByRole('radio', { name: 'Sans limite' }).click();
-  await expect(modes.getByRole('radio', { name: 'Sans limite' })).toHaveAttribute(
-    'aria-checked',
-    'true',
-  );
-  await modes.getByRole('radio', { name: 'Demander' }).click();
+  await expect(
+    modes.getByRole('radio', { includeHidden: true, name: 'Plan', exact: true }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await chat.locator('.composer-mode-picker > summary').click();
+  await modes.getByRole('radio', { includeHidden: true, name: 'Sans limite' }).click();
+  await expect(
+    modes.getByRole('radio', { includeHidden: true, name: 'Sans limite' }),
+  ).toHaveAttribute('aria-checked', 'true');
+  await chat.locator('.composer-mode-picker > summary').click();
+  await modes.getByRole('radio', { includeHidden: true, name: 'Demander' }).click();
 
   for (const text of ['un', 'deux', 'trois']) {
     await composer.fill(text);
@@ -360,16 +367,15 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
   await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
   const next = page.locator('.agent-chat').last();
   await expect(
-    next.getByRole('radiogroup', { name: 'Mode d’autorisation' }).getByRole('radio', {
-      name: 'Demander',
-      exact: true,
-    }),
+    next
+      .getByRole('radiogroup', { name: 'Mode d’autorisation', includeHidden: true })
+      .getByRole('radio', { includeHidden: true, name: 'Demander', exact: true }),
   ).toHaveAttribute('aria-checked', 'true');
   await page.getByRole('button', { name: 'Préférences', exact: true }).click();
   await expect(
     page
       .getByRole('radiogroup', { name: 'Mode de Claude Code au démarrage' })
-      .getByRole('radio', { name: 'Demander', exact: true }),
+      .getByRole('radio', { includeHidden: true, name: 'Demander', exact: true }),
   ).toHaveAttribute('aria-checked', 'true');
 });
 

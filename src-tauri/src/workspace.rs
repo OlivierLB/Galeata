@@ -174,7 +174,7 @@ impl Workspace {
         self.read(path)
     }
     pub fn search(&self, query: &str, files: bool, offset: usize) -> Result<Value> {
-        if query.is_empty() || query.len() > 500 || offset > 10_000 {
+        if (query.is_empty() && !files) || query.len() > 500 || offset > 10_000 {
             return Err("Recherche invalide".into());
         }
         let args = if files {

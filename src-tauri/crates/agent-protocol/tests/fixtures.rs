@@ -160,6 +160,77 @@ fn codex_rejected_turn_completes_and_allows_a_new_turn() {
     assert_eq!(retry["params"]["input"][0]["text"], "Second request");
 }
 
+#[test]
+fn codex_plan_mode_is_native_and_is_reset_when_leaving_plan() {
+    let mut codex = Codex::new("/WORKDIR", None);
+    let init = codex.start();
+    assert_eq!(
+        json(&init.writes[0])["params"]["capabilities"]["experimentalApi"],
+        true
+    );
+    codex.handle_line(r#"{"id":1,"result":{}}"#);
+    codex.handle_line(r#"{"id":2,"result":{"thread":{"id":"t"},"model":"model-a"}}"#);
+    codex.set_mode("plan").unwrap();
+    let turn = json(&codex.send_text("Explore first").writes[0]);
+    assert_eq!(turn["params"]["collaborationMode"]["mode"], "plan");
+    assert_eq!(
+        turn["params"]["collaborationMode"]["settings"]["model"],
+        "model-a"
+    );
+    assert!(turn["params"]["collaborationMode"]["settings"]["developer_instructions"].is_null());
+    assert_eq!(turn["params"]["sandboxPolicy"]["type"], "readOnly");
+    codex.handle_line(
+        r#"{"method":"turn/completed","params":{"turn":{"id":"u","status":"completed"}}}"#,
+    );
+    codex.set_mode("auto").unwrap();
+    let turn = json(&codex.send_text("Implement").writes[0]);
+    assert_eq!(turn["params"]["collaborationMode"]["mode"], "default");
+    assert_eq!(turn["params"]["sandboxPolicy"]["type"], "workspaceWrite");
+}
+
+#[test]
+fn native_compaction_is_idle_only_and_recovers_from_failure() {
+    let mut claude = Claude::new("/WORKDIR");
+    assert!(claude.compact().is_err());
+    claude.start();
+    claude.handle_line(r#"{"type":"control_response","response":{"subtype":"success","request_id":"galeata-init","response":{}}}"#);
+    let compact = claude.compact().unwrap();
+    assert_eq!(json(&compact.writes[0])["message"]["content"], "/compact");
+    assert!(claude.compact().is_err());
+
+    let mut codex = Codex::new("/WORKDIR", None);
+    assert!(codex.compact().is_err());
+    codex.start();
+    codex.handle_line(r#"{"id":1,"result":{}}"#);
+    codex.handle_line(r#"{"id":2,"result":{"thread":{"id":"t"}}}"#);
+    let compact = json(&codex.compact().unwrap().writes[0]);
+    assert_eq!(compact["method"], "thread/compact/start");
+    assert_eq!(compact["params"]["threadId"], "t");
+    assert!(codex.compact().is_err());
+    let failed = codex.handle_line(
+        &serde_json::json!({"id":compact["id"],"error":{"message":"unavailable"}}).to_string(),
+    );
+    assert!(failed.events.iter().any(|event| matches!(
+        event,
+        AgentEvent::TurnCompleted {
+            status: TurnStatus::Failed,
+            ..
+        }
+    )));
+    let compact = json(&codex.compact().unwrap().writes[0]);
+    codex.handle_line(&serde_json::json!({"id":compact["id"],"result":{}}).to_string());
+    codex.send_text("Queued during compaction");
+    let completed = codex.handle_line(
+        r#"{"method":"turn/completed","params":{"turn":{"id":"u","status":"completed"}}}"#,
+    );
+    let turn = json(&completed.writes[0]);
+    assert_eq!(turn["method"], "turn/start");
+    assert_eq!(
+        turn["params"]["input"][0]["text"],
+        "Queued during compaction"
+    );
+}
+
 /// Every streamed message must end with a final text equal to its deltas, and a
 /// well-formed capture must not produce any "unreadable line" notice.
 fn assert_deltas_match_messages(events: &[AgentEvent]) {

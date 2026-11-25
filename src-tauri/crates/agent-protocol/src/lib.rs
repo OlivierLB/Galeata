@@ -89,6 +89,8 @@ pub trait Protocol: Send {
     fn models(&mut self) -> Output;
     /// Selects the model used for the next user message.
     fn set_model(&mut self, model: &str) -> Result<Output, String>;
+    /// Compacts an idle conversation using the provider's native command.
+    fn compact(&mut self) -> Result<Output, String>;
     /// Interrupts the running turn, if any.
     fn interrupt(&mut self) -> Output;
 }

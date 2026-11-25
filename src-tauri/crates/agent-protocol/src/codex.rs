@@ -40,6 +40,7 @@ enum Call {
     Initialize,
     Thread,
     Turn,
+    Compact,
     Models,
     Other(&'static str),
 }
@@ -137,13 +138,13 @@ impl Codex {
         self.streamed.clear();
         out.events.push(AgentEvent::TurnStarted);
         self.set_state(AgentState::Working, out);
-        self.call(
-            "turn/start",
-            json!({"threadId":thread,"input":input,"approvalPolicy":self.policy().0,
-                "sandboxPolicy":{"type":self.policy().1},"model":self.model}),
-            Call::Turn,
-            out,
-        );
+        let mut params = json!({"threadId":thread,"input":input,"approvalPolicy":self.policy().0,
+            "sandboxPolicy":{"type":self.policy().1},"model":self.model});
+        if let Some(model) = &self.model {
+            params["collaborationMode"] = json!({"mode":if self.mode == "plan" {"plan"} else {"default"},
+                "settings":{"model":model,"reasoning_effort":null,"developer_instructions":null}});
+        }
+        self.call("turn/start", params, Call::Turn, out);
     }
 
     fn response(&mut self, id: &Value, value: &Value, out: &mut Output) {
@@ -155,6 +156,7 @@ impl Codex {
                 Call::Initialize => "initialize",
                 Call::Thread => "thread/start",
                 Call::Turn => "turn/start",
+                Call::Compact => "thread/compact/start",
                 Call::Models => "model/list",
                 Call::Other(name) => name,
             };
@@ -165,7 +167,7 @@ impl Codex {
             if matches!(call, Call::Models) {
                 self.models_loading = false;
             }
-            if matches!(call, Call::Turn) {
+            if matches!(call, Call::Turn | Call::Compact) {
                 self.turn = None;
                 self.turn_requested = false;
                 out.events.push(AgentEvent::TurnCompleted {
@@ -257,6 +259,8 @@ impl Codex {
                     self.turn = Some(turn.to_owned());
                 }
             }
+            // Completion is reported by turn/completed, like a regular turn.
+            Call::Compact => {}
             Call::Models => {
                 for model in result["data"].as_array().into_iter().flatten() {
                     if model["hidden"] == true {
@@ -659,7 +663,7 @@ impl Protocol for Codex {
         });
         self.call(
             "initialize",
-            json!({"clientInfo":{"name":"galeata","title":"Galeata","version":env!("CARGO_PKG_VERSION")}}),
+            json!({"clientInfo":{"name":"galeata","title":"Galeata","version":env!("CARGO_PKG_VERSION")},"capabilities":{"experimentalApi":true}}),
             Call::Initialize,
             &mut out,
         );
@@ -811,6 +815,30 @@ impl Protocol for Codex {
             );
         }
         out
+    }
+
+    fn compact(&mut self) -> Result<Output, String> {
+        if self.state != AgentState::Idle || self.turn_requested || self.turn.is_some() {
+            return Err("Attendez la fin du tour pour compacter la conversation".into());
+        }
+        let thread = self
+            .thread
+            .clone()
+            .ok_or("Conversation en cours de démarrage")?;
+        let mut out = Output::default();
+        self.turn_requested = true;
+        out.events.push(AgentEvent::TurnStarted);
+        out.events.push(AgentEvent::Notice {
+            message: "Compaction du contexte…".into(),
+        });
+        self.set_state(AgentState::Working, &mut out);
+        self.call(
+            "thread/compact/start",
+            json!({"threadId":thread}),
+            Call::Compact,
+            &mut out,
+        );
+        Ok(out)
     }
 }
 

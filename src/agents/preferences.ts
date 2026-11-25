@@ -82,8 +82,8 @@ export const agentModes: Record<
   codex: [
     {
       id: 'plan',
-      label: 'Lecture seule',
-      hint: 'Codex lit et propose, sans rien modifier ni exécuter d’écriture',
+      label: 'Plan',
+      hint: 'Codex explore et prépare un plan en mode Plan natif, avant toute modification',
     },
     { id: 'default', label: 'Demander', hint: 'Demande avant toute commande qui n’est pas sûre' },
     {

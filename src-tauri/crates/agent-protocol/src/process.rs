@@ -178,6 +178,13 @@ impl Agent {
         Ok(())
     }
 
+    pub fn compact(&self) -> Result<(), String> {
+        self.ensure_alive()?;
+        let out = self.protocol()?.compact()?;
+        self.apply(out);
+        Ok(())
+    }
+
     /// Closes stdin, then terminates the whole process group (SIGTERM, then
     /// SIGKILL after a grace period). Returns immediately.
     pub fn stop(&self) {

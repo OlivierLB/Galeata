@@ -249,6 +249,9 @@ pub fn set_mode(agents: &Agents, id: &str, mode: &str) -> Result<Value> {
 pub fn models(agents: &Agents, id: &str) -> Result<Value> {
     with_agent(agents, id, |agent| agent.models()).map(|_| Value::Null)
 }
+pub fn compact(agents: &Agents, id: &str) -> Result<Value> {
+    with_agent(agents, id, |agent| agent.compact()).map(|_| Value::Null)
+}
 pub fn set_model(agents: &Agents, id: &str, model: &str) -> Result<Value> {
     with_agent(agents, id, |agent| agent.set_model(model)).map(|_| Value::Null)
 }

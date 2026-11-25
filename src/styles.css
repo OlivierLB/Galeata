@@ -2167,6 +2167,165 @@ body.resizing-horizontal * {
   display: flex;
   justify-content: flex-end;
 }
+.composer-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.composer-tools button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.composer-tools button:hover,
+.composer-tools button.active {
+  color: var(--accent);
+  background: #252038;
+  border-color: #3a3157;
+}
+.composer-tools button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.composer-tools button > span {
+  color: var(--accent);
+  font-family: monospace;
+  font-size: 15px;
+}
+.composer-tools kbd {
+  font-size: 10px;
+  opacity: 0.7;
+}
+.composer-planning .composer-input-row {
+  border-color: var(--accent);
+}
+.composer-plan-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  font-size: 11px;
+  margin-bottom: 8px;
+}
+.composer-palette {
+  border: 1px solid #46405f;
+  background: var(--panel, #191c28);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px #0003;
+}
+.composer-palette header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 5px;
+  font-size: 12px;
+}
+.composer-palette input {
+  width: calc(100% - 24px);
+  margin: 5px 12px 8px;
+  padding: 8px 10px;
+  background: var(--editor);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+.composer-palette [role='listbox'] {
+  max-height: 210px;
+  overflow-y: auto;
+}
+.composer-palette [role='option'] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  text-align: left;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  gap: 3px;
+}
+.composer-palette [role='option'][aria-selected='true'] {
+  background: #302944;
+}
+.composer-palette [role='option']:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.composer-palette [role='option'] strong {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.composer-palette [role='option'] span {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.composer-palette p {
+  color: var(--muted);
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.composer-palette footer,
+.composer-shortcuts {
+  font-size: 10px;
+  color: var(--muted);
+  padding: 7px 12px;
+}
+.composer-palette footer {
+  border-top: 1px solid var(--border);
+}
+.composer-shortcuts {
+  padding: 7px 0 0;
+}
+.composer-error {
+  color: var(--red);
+  font-size: 12px;
+}
+.composer-queue { border: 1px solid #46405f; border-radius: 8px; background: #1d1b2b; margin-bottom: 10px; overflow: hidden; }
+.composer-queue header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 8px 10px; font-size: 11px; }
+.composer-queue header > span { color: var(--muted); font-size: 10px; }
+.composer-queue header > button { margin-left: auto; font-size: 11px; }
+.composer-queue ol { list-style: none; padding: 0; margin: 0; max-height: 160px; overflow-y: auto; }
+.composer-queue li { display: flex; align-items: center; gap: 10px; border-top: 1px solid var(--border); padding: 6px 10px; }
+.composer-queue p { flex: 1; min-width: 0; margin: 0; color: var(--text); font-size: 12px; line-height: 1.5; max-height: 54px; overflow: auto; overflow-wrap: anywhere; white-space: pre-wrap; }
+.queue-order { color: var(--accent); font: 11px var(--mono, monospace); }
+.composer-send-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.chat-composer { position: relative; }
+.composer-bar { gap: 8px 12px; }
+.composer-bar .composer-tools { margin: 0; gap: 0; }
+.composer-bar .composer-tools button { padding: 5px 7px; }
+.composer-mode-picker { position: relative; font-size: 11px; color: var(--muted); }
+.composer-mode-picker > summary { list-style: none; cursor: pointer; padding: 5px 8px; border-radius: 6px; }
+.composer-mode-picker > summary:hover { background: var(--raised); color: var(--text); }
+.composer-mode-picker > summary span { margin-left: 8px; }
+.composer-mode-picker .mode-switch { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 20; min-width: 170px; display: flex; flex-direction: column; align-items: stretch; border: 1px solid var(--border); border-radius: 9px; background: var(--panel, #191c28); padding: 5px; box-shadow: 0 8px 25px #0005; }
+.composer-mode-picker .mode-switch button { padding: 8px 10px; text-align: left; border: 0; border-radius: 5px; }
+.composer-mode-picker .mode-switch button + button { border: 0; }
+.composer-meta { display: flex; justify-content: space-between; gap: 10px; max-width: 860px; margin: 8px auto 0; color: var(--muted); font-size: 10px; }
+.composer-help { position: relative; }
+.composer-help summary { cursor: pointer; list-style: none; }
+.composer-help p { position: absolute; right: 0; bottom: 100%; width: 260px; padding: 12px; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; line-height: 1.8; z-index: 20; }
+.composer-context { font-size: 11px; white-space: nowrap; }
+.composer-bar .agent-state { margin-left: auto; font-size: 10px; }
+.composer-bar .model-picker select { max-width: 180px; background: transparent; border-color: transparent; }
+.composer-palette { position: absolute; bottom: calc(100% - 8px); left: 20px; right: 20px; z-index: 25; margin: 0; }
+.composer-send-actions > .text-button { font-size: 10px; color: var(--muted); }
 .chat-bubble {
   max-width: 85%;
   background: #252038;

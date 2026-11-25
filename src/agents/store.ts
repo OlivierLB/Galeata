@@ -32,6 +32,109 @@ export class AgentStore {
   private early = new Map<string, AgentEvent[]>();
   // Composer state survives chat remounts without notifying every subscriber on typing.
   private drafts = new Map<string, string>();
+  private queueSender?: (id: string, text: string) => Promise<void>;
+  private queueDispatches = new Set<string>();
+
+  /** Installed once by the agent API: queues keep running when chats unmount. */
+  setQueueSender(sender: (id: string, text: string) => Promise<void>) {
+    this.queueSender = sender;
+  }
+
+  enqueue(id: string, text: string) {
+    const conversation = this.get(id);
+    if (!conversation || conversation.state === 'exited') throw new Error('Conversation terminée');
+    if (!text.trim()) return;
+    if (conversation.queuedMessages.length >= 100)
+      throw new Error('La file contient déjà 100 messages.');
+    const message = { id: `queued-${++this.sequence}`, text: text.trim() };
+    this.conversations.set(id, {
+      ...conversation,
+      queuedMessages: [...conversation.queuedMessages, message],
+    });
+    this.changed();
+  }
+
+  removeQueued(id: string, messageId: string) {
+    const conversation = this.get(id);
+    if (!conversation) return;
+    this.conversations.set(id, {
+      ...conversation,
+      queuedMessages: conversation.queuedMessages.filter((message) => message.id !== messageId),
+    });
+    this.changed();
+  }
+
+  pauseQueue(id: string, paused: boolean) {
+    const conversation = this.get(id);
+    if (!conversation) return;
+    this.conversations.set(id, { ...conversation, queuePaused: paused });
+    this.changed();
+  }
+
+  /** Reserve the turn before IPC: an idle event cannot overtake the send request. */
+  sending(id: string) {
+    const conversation = this.get(id);
+    if (!conversation || conversation.state === 'exited') throw new Error('Conversation terminée');
+    this.conversations.set(id, { ...conversation, busy: true });
+    this.changed();
+  }
+
+  sendFailed(id: string) {
+    const conversation = this.get(id);
+    if (!conversation) return;
+    this.conversations.set(id, {
+      ...conversation,
+      busy: conversation.state === 'working' || conversation.state === 'waitingApproval',
+      queuePaused: true,
+    });
+    this.changed();
+  }
+
+  private flushQueues() {
+    if (!this.queueSender) return;
+    for (const conversation of this.list) {
+      const { id, queuedMessages } = conversation;
+      if (
+        !queuedMessages.length ||
+        conversation.queuePaused ||
+        conversation.state !== 'idle' ||
+        conversation.busy ||
+        this.queueDispatches.has(id) ||
+        conversation.approvals.length ||
+        conversation.items.some(
+          (item) => (item.kind === 'question' || item.kind === 'plan') && item.status === 'pending',
+        )
+      )
+        continue;
+      const message = queuedMessages[0];
+      this.queueDispatches.add(id);
+      this.conversations.set(id, {
+        ...conversation,
+        busy: true,
+        queuedMessages: queuedMessages.slice(1),
+      });
+      this.changed();
+      void Promise.resolve()
+        .then(() => this.queueSender!(id, message.text))
+        .catch((reason) => {
+          const current = this.get(id);
+          if (!current) return;
+          this.conversations.set(id, {
+            ...current,
+            queuedMessages: [message, ...current.queuedMessages],
+            queuePaused: true,
+          });
+          this.sendFailed(id);
+          this.apply(id, [
+            { type: 'error', message: `Envoi de la file impossible : ${String(reason)}` },
+          ]);
+        })
+        .finally(() => {
+          this.queueDispatches.delete(id);
+          this.changed();
+        });
+    }
+  }
 
   getDraft(id: string): string {
     return this.drafts.get(id) ?? '';
@@ -61,6 +164,8 @@ export class AgentStore {
       demo,
       state: 'starting',
       busy: false,
+      queuedMessages: [],
+      queuePaused: false,
       items: [],
       approvals: [],
       costUsd: 0,
@@ -160,6 +265,7 @@ export class AgentStore {
           break;
         case 'turnCompleted':
           next.busy = false;
+          if (event.status !== 'completed') next.queuePaused = true;
           next.costUsd += event.costUsd ?? 0;
           if (event.status === 'failed')
             push({ kind: 'error', text: event.error ?? 'Le tour a échoué.' });
@@ -310,11 +416,13 @@ export class AgentStore {
           push({ kind: 'notice', text: event.message });
           break;
         case 'error':
+          next.queuePaused = true;
           push({ kind: 'error', text: event.message });
           break;
         case 'exited':
           next.state = 'exited';
           next.busy = false;
+          next.queuePaused = true;
           next.approvals = [];
           next.exit = { code: event.code, stderr: event.stderr };
           if (event.code !== 0 && event.code !== null)
@@ -340,6 +448,7 @@ export class AgentStore {
     schedule(() => {
       this.pending = false;
       for (const listener of this.listeners) listener();
+      this.flushQueues();
     });
   }
 }

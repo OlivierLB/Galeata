@@ -42,10 +42,25 @@ export async function startAgent(provider: Provider, resumeId?: string): Promise
 }
 
 export async function sendToAgent(id: string, text: string) {
+  agentStore.sending(id);
   agentStore.addUser(id, text);
-  if (agentStore.get(id)?.demo) return demoTurn(id);
-  await request('agent.send', { id, text });
+  if (agentStore.get(id)?.demo) {
+    agentStore.apply(id, [{ type: 'turnStarted' }, { type: 'state', state: 'working' }]);
+    void demoTurn(id).catch((error) => {
+      agentStore.sendFailed(id);
+      agentStore.apply(id, [{ type: 'error', message: String(error) }]);
+    });
+    return;
+  }
+  try {
+    await request('agent.send', { id, text });
+  } catch (error) {
+    agentStore.sendFailed(id);
+    throw error;
+  }
 }
+
+agentStore.setQueueSender(sendToAgent);
 
 export async function respondToAgent(id: string, requestId: string, decision: Decision) {
   if (agentStore.get(id)?.demo) return demoRespond(id, requestId);
@@ -71,15 +86,50 @@ export async function answerAgent(
  */
 export async function setAgentMode(id: string, mode: string) {
   const provider = agentStore.get(id)?.provider;
-  if (provider) writeStartMode(provider, mode);
   // The demo has no agent: the mode is only shown.
-  if (agentStore.get(id)?.demo) return agentStore.apply(id, [{ type: 'mode', mode }]);
-  await request('agent.mode', { id, mode });
+  if (agentStore.get(id)?.demo) agentStore.apply(id, [{ type: 'mode', mode }]);
+  else await request('agent.mode', { id, mode });
+  if (provider) writeStartMode(provider, mode);
 }
 
 export async function interruptAgent(id: string) {
+  agentStore.pauseQueue(id, true);
   if (agentStore.get(id)?.demo) return;
   await request('agent.interrupt', { id });
+}
+
+export interface SkillOption {
+  name: string;
+  description: string;
+  path: string;
+}
+
+export async function listAgentSkills(provider: Provider): Promise<SkillOption[]> {
+  if (!desktop)
+    return [
+      {
+        name: 'review',
+        description: 'Relire les modifications du projet (démo)',
+        path: '.agents/skills/review/SKILL.md',
+      },
+    ];
+  return request<SkillOption[]>('agent.skills', { provider });
+}
+
+export async function compactAgent(id: string) {
+  if (agentStore.get(id)?.demo) {
+    agentStore.apply(id, [
+      { type: 'notice', message: 'Démonstration : le contexte serait compacté ici.' },
+    ]);
+    return;
+  }
+  agentStore.sending(id);
+  try {
+    await request('agent.compact', { id });
+  } catch (error) {
+    agentStore.sendFailed(id);
+    throw error;
+  }
 }
 
 export async function setAgentModel(id: string, model: string) {
@@ -112,7 +162,11 @@ const demoModels: Record<Provider, ModelOption[]> = {
   ],
   codex: [
     { id: 'demo-codex', label: 'Codex (démo)', description: 'Modèle simulé dans l’aperçu.' },
-    { id: 'demo-codex-fast', label: 'Codex rapide (démo)', description: 'Modèle simulé dans l’aperçu.' },
+    {
+      id: 'demo-codex-fast',
+      label: 'Codex rapide (démo)',
+      description: 'Modèle simulé dans l’aperçu.',
+    },
   ],
 };
 
@@ -138,9 +192,12 @@ async function demoTurn(id: string) {
   for (const batch of turn.batches) {
     if (!agentStore.get(id)) return;
     await delay(60);
-    agentStore.apply(id, batch.map((event) => event.type === 'session'
-      ? { ...event, model: agentStore.get(id)?.model ?? null }
-      : event));
+    agentStore.apply(
+      id,
+      batch.map((event) =>
+        event.type === 'session' ? { ...event, model: agentStore.get(id)?.model ?? null } : event,
+      ),
+    );
     const approval = batch.find(
       (event) =>
         event.type === 'approval' || event.type === 'planProposal' || event.type === 'question',

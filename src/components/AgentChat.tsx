@@ -1,12 +1,4 @@
-import {
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type KeyboardEvent,
-} from 'react';
+import { memo, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { agentStore } from '../agents/store.ts';
 import {
   answerAgent,
@@ -22,7 +14,7 @@ import type { Approval, ChatItem, Conversation, Decision, Provider } from '../ag
 import { providerNames } from '../agents/types.ts';
 import { Markdown } from './Markdown.tsx';
 import { Icon } from './Icon.tsx';
-import { mascot } from '../mascot/store.ts';
+import { AgentComposer } from './AgentComposer.tsx';
 
 const toolLabels: Record<string, string> = {
   command: 'Commande',
@@ -267,38 +259,53 @@ function ApprovalCard({
 
 /** Permission mode of a conversation; Shift+Tab in the composer cycles it. */
 function ModeSwitch({ id, provider, mode }: { id: string; provider: Provider; mode?: string }) {
+  const picker = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const dismiss = (event: PointerEvent) => {
+      if (event.target instanceof Node && !picker.current?.contains(event.target) && picker.current)
+        picker.current.open = false;
+    };
+    document.addEventListener('pointerdown', dismiss);
+    return () => document.removeEventListener('pointerdown', dismiss);
+  }, []);
   return (
-    <div className="mode-switch" role="radiogroup" aria-label="Mode d’autorisation">
-      {agentModes[provider].map((option) => (
-        <button
-          key={option.id}
-          role="radio"
-          aria-checked={mode === option.id}
-          className={`${mode === option.id ? 'active' : ''} ${option.danger ? 'danger' : ''}`}
-          title={option.hint}
-          onClick={() =>
-            void setAgentMode(id, option.id).catch((error) =>
-              agentStore.apply(id, [{ type: 'error', message: String(error) }]),
-            )
-          }
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
+    <details className="composer-mode-picker" ref={picker}>
+      <summary title="Changer de mode (Maj+Tab)">
+        {agentModes[provider].find((option) => option.id === mode)?.label ?? 'Mode'} <span>⌄</span>
+      </summary>
+      <div className="mode-switch" role="radiogroup" aria-label="Mode d’autorisation">
+        {agentModes[provider].map((option) => (
+          <button
+            key={option.id}
+            role="radio"
+            aria-checked={mode === option.id}
+            className={`${mode === option.id ? 'active' : ''} ${option.danger ? 'danger' : ''}`}
+            title={option.hint}
+            onClick={() => {
+              if (picker.current) picker.current.open = false;
+              void setAgentMode(id, option.id).catch((error) =>
+                agentStore.apply(id, [{ type: 'error', message: String(error) }]),
+              );
+            }}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </details>
   );
 }
 
 function ModelSwitch({ conversation }: { conversation: Conversation }) {
   const [changing, setChanging] = useState(false);
   const { id, provider, model, models, state, busy } = conversation;
-  const selected = models.find((option) => option.id === model)
-    ?? models.find((option) => option.resolvedModel === model)
-    ?? (!model ? models.find((option) => option.id === 'default') : undefined);
+  const selected =
+    models.find((option) => option.id === model) ??
+    models.find((option) => option.resolvedModel === model) ??
+    (!model ? models.find((option) => option.id === 'default') : undefined);
   const value = selected?.id ?? model ?? '';
   return (
     <label className="model-picker">
-      <span>Modèle</span>
       <select
         aria-label={`Modèle ${providerNames[provider]}`}
         title={selected?.description || 'Modèle utilisé pour le prochain message'}
@@ -311,9 +318,15 @@ function ModelSwitch({ conversation }: { conversation: Conversation }) {
             .finally(() => setChanging(false));
         }}
       >
-        {!selected ? <option value={value}>{model || (state === 'starting' ? 'Chargement…' : 'Modèle actuel')}</option> : null}
+        {!selected ? (
+          <option value={value}>
+            {model || (state === 'starting' ? 'Chargement…' : 'Modèle actuel')}
+          </option>
+        ) : null}
         {models.map((option) => (
-          <option key={option.id} value={option.id} title={option.description}>{option.label}</option>
+          <option key={option.id} value={option.id} title={option.description}>
+            {option.label}
+          </option>
         ))}
       </select>
     </label>
@@ -326,15 +339,8 @@ export default function AgentChat({
   ...actions
 }: { id: string; showTools?: boolean } & Actions) {
   const conversation = useSyncExternalStore(agentStore.subscribe, () => agentStore.get(id));
-  const [draft, setDraft] = useState(() => agentStore.getDraft(id));
-  function updateDraft(text: string) {
-    agentStore.setDraft(id, text);
-    setDraft(text);
-    if (text) mascot.react('text-edit', id);
-  }
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
-  const input = useRef<HTMLTextAreaElement>(null);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
   // Stable object so memoized items do not re-render when the parent does.
@@ -361,36 +367,8 @@ export default function AgentChat({
     const element = scroller.current;
     if (element && stick.current) element.scrollTop = element.scrollHeight;
   }, [conversation, showTools]);
-  useEffect(() => input.current?.focus(), [id]);
 
   if (!conversation) return null;
-  const exited = conversation.state === 'exited';
-  function send() {
-    const text = draft.trim();
-    if (!text || exited) return;
-    updateDraft('');
-    stick.current = true;
-    void sendToAgent(id, text).catch((error) =>
-      agentStore.apply(id, [{ type: 'error', message: String(error) }]),
-    );
-  }
-  function key(event: KeyboardEvent<HTMLTextAreaElement>) {
-    // Shift+Tab cycles the permission mode, as in the Claude Code terminal.
-    if (event.key === 'Tab' && event.shiftKey && conversation) {
-      event.preventDefault();
-      const modes = agentModes[conversation.provider].filter((m) => !m.danger);
-      const index = modes.findIndex((m) => m.id === conversation.mode);
-      const next = modes[(index + 1) % modes.length];
-      void setAgentMode(id, next.id).catch((error) =>
-        agentStore.apply(id, [{ type: 'error', message: String(error) }]),
-      );
-      return;
-    }
-    if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
-      event.preventDefault();
-      send();
-    }
-  }
   return (
     <section
       className="agent-chat"
@@ -437,44 +415,25 @@ export default function AgentChat({
           ))}
         </div>
       </div>
-      <div className="chat-composer">
-        <div className="composer-input-row">
-        <textarea
-          ref={input}
-          aria-label="Message à l’agent"
-          placeholder={
-            exited
-              ? 'Conversation terminée'
-              : 'Décrivez la tâche… (Entrée pour envoyer, Maj+Entrée pour une nouvelle ligne)'
-          }
-          value={draft}
-          disabled={exited}
-          rows={Math.min(8, Math.max(2, draft.split('\n').length))}
-          onChange={(event) => updateDraft(event.target.value)}
-          onKeyDown={key}
-        />
-        </div>
-        <div className="composer-bar">
-          <ModelSwitch conversation={conversation} />
-          <ModeSwitch id={id} provider={conversation.provider} mode={conversation.mode} />
-          <span className={`agent-state state-${conversation.state}`}>
-            <span className="status-dot" /> {stateLabels[conversation.state]}
-            {conversation.costUsd ? ` · ${conversation.costUsd.toFixed(2)} $` : ''}
-            {conversation.usage?.contextWindow
-              ? ` · contexte ${Math.round((conversation.usage.inputTokens / conversation.usage.contextWindow) * 100)} %`
-              : ''}
-          </span>
-          {conversation.busy ? (
-            <button className="text-button" onClick={() => void interruptAgent(id)}>
-              Interrompre
-            </button>
-          ) : null}
-          <button className="button" disabled={!draft.trim() || exited} onClick={send}>
-            Envoyer
-            <Icon name="arrow" size={14} />
+      <AgentComposer
+        conversation={conversation}
+        onSend={async (text) => {
+          stick.current = true;
+          await sendToAgent(id, text);
+        }}
+      >
+        <ModelSwitch conversation={conversation} />
+        <ModeSwitch id={id} provider={conversation.provider} mode={conversation.mode} />
+        <span className={`agent-state state-${conversation.state}`}>
+          <span className="status-dot" /> {stateLabels[conversation.state]}
+          {conversation.costUsd ? ` · ${conversation.costUsd.toFixed(2)} $` : ''}
+        </span>
+        {conversation.busy ? (
+          <button className="text-button" onClick={() => void interruptAgent(id)}>
+            Interrompre
           </button>
-        </div>
-      </div>
+        ) : null}
+      </AgentComposer>
     </section>
   );
 }

@@ -715,6 +715,13 @@ impl Protocol for Claude {
         );
         out
     }
+
+    fn compact(&mut self) -> Result<Output, String> {
+        if self.state != AgentState::Idle || self.pending_turns != 0 {
+            return Err("Attendez la fin du tour pour compacter la conversation".into());
+        }
+        Ok(self.send_text("/compact"))
+    }
 }
 
 /// Short, human title for a Claude tool call.

@@ -3,6 +3,7 @@ mod git;
 mod mcp;
 mod remote;
 mod sessions;
+mod skills;
 pub mod store;
 mod terminal;
 pub mod workspace;
@@ -365,6 +366,8 @@ impl State {
                 required(&args, "mode")?,
             ),
             "agent.models" if !agent => agents::models(&self.agents, required(&args, "id")?),
+            "agent.skills" if !agent => skills::list(&w, required(&args, "provider")?),
+            "agent.compact" if !agent => agents::compact(&self.agents, required(&args, "id")?),
             "agent.model" if !agent => agents::set_model(
                 &self.agents,
                 required(&args, "id")?,
