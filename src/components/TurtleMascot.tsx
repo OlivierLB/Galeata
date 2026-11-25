@@ -10,7 +10,7 @@ function readMotion() {
 }
 
 export default function TurtleMascot({ agentId, compact = false }: { agentId?: string; compact?: boolean }) {
-  const snapshot = useSyncExternalStore(mascot.subscribe, useCallback(() => mascot.get(agentId), [agentId]));
+  const snapshot = useSyncExternalStore(mascot.subscribe, useCallback(() => mascot.getOverview(agentId), [agentId]));
   const [motion, setMotion] = useState(readMotion);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [failed, setFailed] = useState(false);

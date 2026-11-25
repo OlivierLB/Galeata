@@ -1,8 +1,11 @@
 import type { Activity, GitBranch, GitStatus, GitStash, Plan, Workspace } from './types.ts';
+import { trackMascotRequest } from './mascot/requests.ts';
+import { mascot } from './mascot/store.ts';
 
 export const desktop = '__TAURI_INTERNALS__' in window;
 let activeWorkspace: Workspace | null = null;
 export function setActiveWorkspace(workspace: Workspace | null) {
+  if (activeWorkspace?.id !== workspace?.id) mascot.clear();
   activeWorkspace = workspace;
 }
 export function getActiveWorkspace() {
@@ -11,9 +14,12 @@ export function getActiveWorkspace() {
 
 export async function request<T>(method: string, args: Record<string, unknown> = {}): Promise<T> {
   if (!activeWorkspace) throw new Error('Ouvrez un dossier pour commencer');
-  if (!desktop) return previewRequest(method, args) as T;
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>('request', { method, args, workspaceId: activeWorkspace.id });
+  const workspaceId = activeWorkspace.id;
+  return trackMascotRequest(method, args, async () => {
+    if (!desktop) return previewRequest(method, args) as T;
+    const { invoke } = await import('@tauri-apps/api/core');
+    return invoke<T>('request', { method, args, workspaceId });
+  });
 }
 export async function openWorkspace(path?: string): Promise<Workspace | null> {
   if (!desktop) {

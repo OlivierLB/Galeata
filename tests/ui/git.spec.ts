@@ -61,6 +61,11 @@ test('mettre de côté, changer de branche et restaurer le stash sans terminal',
   await manager.getByRole('button', { name: 'Fermer la gestion Git' }).click();
   await expect(review.locator('.git-change-path')).toContainText('README.md');
   await review.getByRole('button', { name: 'Récupérer', exact: true }).click();
+  await expect(page.locator('.turtle-mascot')).toHaveAttribute('data-animation', 'step');
+  await expect(page.locator('.turtle-mascot canvas')).toHaveAttribute(
+    'aria-label',
+    'Mascotte : Références Git actualisées',
+  );
   await expect(
     page.getByRole('alert').filter({ hasText: 'Références distantes actualisées.' }),
   ).toBeVisible();

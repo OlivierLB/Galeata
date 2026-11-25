@@ -207,7 +207,7 @@ export default function App() {
     async (path: string, targetLine?: number, reveal = true) => {
       setDiff(null);
       setLine(targetLine);
-      if (reveal) setCodeVisible(true);
+      if (reveal) { setCodeVisible(true); mascot.react('file-opened'); }
       if (tabsRef.current.some((file) => file.path === path)) {
         setActive(path);
         return;
@@ -420,6 +420,7 @@ export default function App() {
           path: active,
         });
         if (disposed || result.stamp === previous.stamp) return;
+        mascot.react('file-changed');
         setTabs((files) =>
           files.map((file) =>
             file.path !== active
@@ -458,7 +459,6 @@ export default function App() {
         content: file.content,
         stamp: file.stamp,
       });
-      mascot.react('file-saved');
       setTabs((previous) =>
         previous.map((current) =>
           current.path === path
