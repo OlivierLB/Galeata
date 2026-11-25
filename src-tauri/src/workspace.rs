@@ -264,6 +264,9 @@ pub fn run_outcome(
     command
         .args(args)
         .current_dir(root)
+        // Without the AppImage runtime variables (see galeata_agent_protocol::host_env).
+        .env_clear()
+        .envs(galeata_agent_protocol::host_env(std::env::vars_os()))
         .env("GIT_TERMINAL_PROMPT", "0")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

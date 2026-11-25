@@ -47,7 +47,8 @@ export default function EditorSurface({
   line,
 }: {
   file: OpenFile;
-  diff?: { original: string; modified: string };
+  /** With `editable`, the right side is the working file: changes and Ctrl+S apply to it. */
+  diff?: { original: string; modified: string; editable?: boolean };
   onChange: (content: string) => void;
   onSave: () => void;
   line?: number;
@@ -88,11 +89,20 @@ export default function EditorSurface({
       );
       const editor = monaco.editor.createDiffEditor(container.current, {
         ...options,
-        readOnly: true,
+        readOnly: !diff.editable,
+        originalEditable: false,
         renderSideBySide: true,
       });
       editor.setModel({ original, modified });
+      const listener = diff.editable
+        ? modified.onDidChangeContent(() => changeRef.current(modified.getValue()))
+        : null;
+      if (diff.editable)
+        editor
+          .getModifiedEditor()
+          .addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current());
       return () => {
+        listener?.dispose();
         editor.dispose();
         original.dispose();
         modified.dispose();

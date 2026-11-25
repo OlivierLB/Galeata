@@ -13,3 +13,4 @@ test-results/
 *.sqlite*
 *.sock
 .DS_Store
+release-local/

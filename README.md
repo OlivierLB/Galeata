@@ -4,25 +4,30 @@ Un IDE local pour développer avec vos agents : fichiers, code, terminal, Git, p
 
 **Version 0.1.0 en développement. Linux uniquement pour cette première version.** La compilation, les tests et le paquet Debian sont validés dans la CI. Les essais interactifs et les connexions aux comptes restent à effectuer ; voir [l’état des vérifications](docs/validation.md).
 
-## Installer l’application sur Linux
+## Installer Galeata
 
-Le paquet natif est construit sur Ubuntu 22.04 pour prendre en charge Pop!_OS 22.04 et les distributions compatibles plus récentes. Il n’est pas nécessaire d’installer Rust pour utiliser l’application.
-
-Depuis le dossier du projet :
+Une seule commande, sans sudo ni dépendance à installer (Linux x86_64) :
 
 ```sh
-python3 scripts/install-linux.py
+curl -fsSL https://raw.githubusercontent.com/OlivierLB/Galeata/main/install.sh | sh
 ```
 
-L’installateur télécharge la dernière compilation réussie via GitHub CLI (`gh`), vérifie les bibliothèques système et ajoute **Galeata au menu des applications**, avec une commande `~/.local/bin/galeata`. L’installation reste dans votre compte, sans sudo, et conserve les plans et préférences existants. Les chemins des outils disponibles au moment de l’installation sont transmis au lanceur pour retrouver Codex, Claude Code et ripgrep depuis le bureau.
+Galeata apparaît dans le menu des applications et la commande `galeata` est ajoutée dans `~/.local/bin`. Relancer la même commande met Galeata à jour ; `sh install.sh --uninstall` la retire en conservant vos projets, plans et préférences.
 
-Si GitHub CLI demande une connexion, utilisez `gh auth login`. Une archive ZIP ou un paquet Debian déjà téléchargé peut aussi être utilisé :
+Il vous faut **Claude Code ou Codex** : un seul des deux suffit. Galeata les détecte et vous guide au premier lancement s’il n’en trouve aucun.
 
-```sh
-python3 scripts/install-linux.py --archive /chemin/vers/galeata-linux-deb.zip
-```
+<details>
+<summary>Ce que fait l’installateur</summary>
 
-L’installation utilisateur utilise `~/.local/share/galeata`. Elle est distincte du stockage des plans et sessions de l’application. Vous pouvez aussi installer le paquet Debian avec le gestionnaire de paquets système.
+- Il télécharge l’AppImage de la dernière [Release](https://github.com/OlivierLB/Galeata/releases) (toutes les bibliothèques sont incluses) et vérifie son empreinte SHA-256.
+- Il l’extrait dans `~/.local/share/galeata`, sans FUSE, ce qui donne aussi un démarrage plus rapide qu’une AppImage montée. Il garde la version précédente pour pouvoir revenir en arrière.
+- Il ne remplace jamais un fichier qu’il n’a pas créé, et ne touche pas aux données de l’application (`~/.local/share/dev.olivierlb.galeata`).
+- Variables : `GALEATA_VERSION=v0.2.0` pour installer une version précise, `GALEATA_BIN_DIR` pour un autre dossier de commande.
+
+Construite sur Ubuntu 22.04 : fonctionne sur Pop!_OS 22.04 et les distributions plus récentes. Chaque Release contient aussi un paquet `.deb` (`sudo apt install ./galeata-linux-amd64.deb`).
+</details>
+
+Pour les développeurs, `python3 scripts/install-linux.py` installe la dernière compilation de la CI (nécessite GitHub CLI connecté).
 
 ## Développer et compiler
 
@@ -54,18 +59,36 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml
 npm run package  # Compilation et paquets Linux .deb / AppImage
 ```
 
+Publier une version : aligner `version` dans `package.json`, `src-tauri/tauri.conf.json` et `src-tauri/Cargo.toml`, puis pousser un tag `vX.Y.Z`. Le workflow `release.yml` construit l’AppImage et le `.deb` sur Ubuntu 22.04, teste `install.sh` et le démarrage de l’application dans des conteneurs Ubuntu 22.04 et 24.04 vierges, puis publie la Release. Lancé à la main (`gh workflow run release.yml`), il fait tout sauf publier.
+
+Les fixtures de protocole des agents (`tests/fixtures/agents/*.jsonl`) se régénèrent avec les CLI installées et authentifiées. Le script consomme un peu de quota, conserve les fixtures existantes sauf `--force` et retire chemins personnels, e-mails, outils et configuration privée :
+
+```sh
+node scripts/capture-agent-protocol.mjs --provider claude|codex|all [--scenario basic|plan|question|auto|todo] [--force] [--codex-bin CHEMIN]
+```
+
+`scripts/probe/` vérifie comment les CLI voient les outils MCP de Galeata, avec un serveur factice qui journalise les appels, sans toucher à l’application. Par exemple, pour savoir si Codex appelle les outils sans demander d’autorisation et suit la consigne de tenue du plan :
+
+```sh
+python3 -I scripts/probe/codex_mcp_probe.py DOSSIER JOURNAL -c 'mcp_servers.galeata.default_tools_approval_mode="approve"' [--task TEXTE] [--instructions TEXTE]
+```
+
 La version navigateur ne peut ni accéder aux fichiers locaux, ni exécuter de terminal, ni connecter un service. Elle présente l’interface avec un projet d’exemple. Son plan de démonstration est conservé dans le stockage du navigateur, indépendamment de SQLite.
 
 ## Fonctions de cette version
 
 - Dossiers, arborescence progressive, onglets, édition Monaco et recherche ripgrep paginée.
+- Pages dédiées Fichiers, Recherche, Git et Agents : accueil des fichiers, résultats groupés avec aperçu et vue d’ensemble Git avec comparateur.
 - Création de fichiers et dossiers, renommage et suppression de fichiers ; détection des modifications externes et refus d’écrasement silencieux.
 - Terminal PTY avec le shell local ; plusieurs onglets persistants tant que l’application reste ouverte.
 - Diff local et indexé, staging, désindexation, commit, branches, worktrees, fetch, pull en avance rapide et push.
+- [Gestion Git simplifiée](docs/git.md) depuis la branche en bas à gauche : branches locales/distantes, changement, fusion, résolution/annulation de fusion, stash et premier push.
 - Plan SQLite avec historique transactionnel, révision, étapes, blocages et propositions de changement de périmètre.
 - Lancement et reprise de Codex / Claude Code ; découverte locale de leurs sessions associées au dossier.
+- Choix du modèle par conversation IA, parmi les modèles renvoyés par la CLI du fournisseur ; le choix s’applique au prochain message, après la fin du tour en cours.
+- [Mascotte tortue](docs/mascot.md) animée en bas de la barre de navigation : réflexion, écriture, outils, attente et célébrations, avec pause et respect de la réduction des animations.
+- Bouton « Texte uniquement » pour masquer puis réafficher commandes, outils et raisonnements ; le choix est mémorisé et les demandes d’autorisation restent accessibles.
 - Activité et sous-agents déclarés via MCP ; métadonnées historiques lorsqu’elles sont disponibles ; passations et signalement des fichiers revendiqués par plusieurs agents.
-- Connexions GitHub / GitLab, demandes ouvertes, fichiers modifiés et résultats CI. Jetons conservés dans le coffre Linux Secret Service.
 - Restauration des fichiers ouverts, palette `Ctrl P`, sauvegarde `Ctrl S`, panneau terminal avec Ctrl et la touche accent grave.
 
 Une étape annoncée terminée ne signifie pas que ses tests ont réussi. Les vérifications rapportées par un agent conservent la provenance `agent_reported`. Un statut d’agent est une déclaration datée, pas une déduction à partir du texte du terminal.

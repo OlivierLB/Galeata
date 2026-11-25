@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { languageFor, progress, relativeTime } from '../src/domain.ts';
+import { clampSize, languageFor, progress, relativeTime } from '../src/domain.ts';
 
 test('un plan sans étape ne prétend pas être terminé', () => {
   assert.equal(progress({ revision: 0, objective: '', steps: [] }), 0);
@@ -23,4 +23,12 @@ test('les fichiers inconnus restent éditables en texte brut', () => {
 });
 test('un horodatage futur ne produit pas un âge négatif', () => {
   assert.equal(relativeTime(Date.now() + 100000), 'à l’instant');
+});
+test('une taille de panneau reste dans ses bornes et ignore une valeur corrompue', () => {
+  const bounds = { min: 180, max: 640 };
+  assert.equal(clampSize(300.4, bounds, 245), 300);
+  assert.equal(clampSize(10, bounds, 245), 180);
+  assert.equal(clampSize(5000, bounds, 245), 640);
+  assert.equal(clampSize(Number('abc'), bounds, 245), 245);
+  assert.equal(clampSize(null, bounds, 245), 245);
 });

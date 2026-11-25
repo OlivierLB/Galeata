@@ -30,6 +30,7 @@ Le socket est dans un répertoire de mode `0700` et possède le mode `0600`. Une
 | `git.get_diff`           | `path`, `staged?`                                                  | Versions originale/modifiée et patch                 |
 | `plan.get`               | Aucun                                                              | Objectif, étapes et révision                         |
 | `plan.update_step`       | `revision`, `id`, `status`, `note?`                                | Nouveau plan                                         |
+| `plan.set`               | `revision`, `objective`, `steps`, `document?`                      | Nouveau plan (étapes inchangées gardent leur état)   |
 | `plan.propose_change`    | `revision`, `reason`, `objective`, `steps`                         | Proposition à examiner dans l’activité               |
 | `activity.report`        | `message`, `sessionId`, `status`, `parentId?`, `files?`, `stepId?` | Événement daté                                       |
 | `verification.record`    | `message`, `command`, `exitCode`, `stepId?`, `sessionId?`          | Rapport déclaré                                      |
@@ -43,7 +44,7 @@ Les états d’étape sont `pending`, `in_progress`, `blocked`, `done`. Les éta
 
 Lire `plan.get` avant de modifier une étape. Passer la révision lue à `plan.update_step`. Un écart produit une erreur `REVISION_CONFLICT` ; relire et réconcilier avant de retenter. Ne pas réessayer avec une révision devinée.
 
-Les changements d’objectif et la réécriture des étapes passent par une proposition. Son acceptation utilise sa révision de base : si le plan a évolué entre-temps, une proposition actualisée est nécessaire. La mise à jour du plan et son événement d’historique sont écrits dans la même transaction SQLite.
+Les agents lancés depuis Galeata reçoivent une consigne (`--append-system-prompt` pour Claude Code, `developerInstructions` pour Codex) : tenir le plan à jour sans qu’on le leur demande, avec `plan.set` à chaque nouvelle tâche ou changement d’objectif (et le plan détaillé en markdown dans `document`), puis `plan.update_step` au début et à la fin de chaque étape. Ces outils sont autorisés d’office (`--allowedTools mcp__galeata` ; Codex : `mcp_servers.galeata.default_tools_approval_mode="approve"`). Un plan repris de l’historique d’une conversation porte `tracked: false` et `proposedAt` : son avancement n’a pas été suivi, et l’agent repris doit indiquer l’état réel des étapes à son prochain message. Le premier changement d’état réel retire ce marqueur. `plan.propose_change` reste disponible pour soumettre un changement à validation. Son acceptation utilise sa révision de base : si le plan a évolué entre-temps, une proposition actualisée est nécessaire. La mise à jour du plan et son événement d’historique sont écrits dans la même transaction SQLite.
 
 `verification.record` produit toujours un rapport `agent_reported`. Il ne peut pas certifier une exécution observée par Galeata. Le statut `done` est une déclaration de l’auteur, indépendante des vérifications.
 

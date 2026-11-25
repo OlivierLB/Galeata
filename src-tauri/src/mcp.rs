@@ -13,6 +13,7 @@ pub fn tools() -> Value {
         ("git.get_diff","Lire le diff d’un fichier",json!({"path":string,"staged":{"type":"boolean"}}),vec!["path"]),
         ("plan.get","Lire le plan et sa révision avant une mise à jour",json!({}),vec![]),
         ("plan.update_step","Mettre à jour une étape existante sans changer son objectif. done indique une déclaration de l’agent, pas une vérification.",json!({"revision":integer,"id":string,"status":{"type":"string","enum":["pending","in_progress","blocked","done"]},"note":string}),vec!["revision","id","status"]),
+        ("plan.set","Fixer l’objectif, les étapes et, si vous l’avez rédigé, le plan détaillé (document, markdown) affichés à l’utilisateur, dans sa langue. Les étapes inchangées gardent leur état.",json!({"revision":integer,"objective":string,"document":string,"steps":{"type":"array","items":{"type":"object","properties":{"id":string,"title":string,"status":{"type":"string","enum":["pending","in_progress","blocked","done"]}},"required":["title"]}}}),vec!["revision","objective","steps"]),
         ("plan.propose_change","Proposer un changement de périmètre à valider dans Galeata",json!({"revision":integer,"reason":string,"objective":string,"steps":{"type":"array","items":{"type":"object"}}}),vec!["revision","reason","objective","steps"]),
         ("activity.report","Déclarer une activité, un blocage ou une mission de sous-agent",json!({"message":string,"sessionId":string,"parentId":string,"stepId":string,"status":{"type":"string","enum":["running","blocked","done"]},"files":{"type":"array","items":string}}),vec!["message","sessionId","status"]),
         ("verification.record","Rapporter une vérification avec provenance agent_reported",json!({"message":string,"stepId":string,"command":string,"exitCode":{"type":"integer"},"sessionId":string}),vec!["message","command","exitCode"]),
@@ -34,7 +35,7 @@ pub fn response(request: &Value, call: impl FnOnce(&str, Value) -> Result<Value>
                 "2025-06-18"
             };
             Ok(
-                json!({"protocolVersion":version,"serverInfo":{"name":"galeata","version":env!("CARGO_PKG_VERSION")},"capabilities":{"tools":{"listChanged":false}},"instructions":"Vous travaillez depuis Galeata. Commencez une mission par workspace.get_context et plan.get. Déclarez votre mission avec activity.report, un sessionId stable, votre état et vos fichiers concernés ; actualisez la déclaration aux changements d’état. Mettez à jour les étapes avec plan.update_step en passant la révision lue. Tout changement d’objectif ou d’étapes passe par plan.propose_change avec cette révision, jamais par une réécriture silencieuse. En fin de mission, enregistrez les vérifications avec verification.record et une passation avec session.save_handoff. Les vérifications MCP restent agent_reported."}),
+                json!({"protocolVersion":version,"serverInfo":{"name":"galeata","version":env!("CARGO_PKG_VERSION")},"capabilities":{"tools":{"listChanged":false}},"instructions":"Vous travaillez depuis Galeata. Commencez une mission par workspace.get_context et plan.get. Déclarez votre mission avec activity.report, un sessionId stable, votre état et vos fichiers concernés ; actualisez la déclaration aux changements d’état. Tenez le plan de mission à jour sans attendre qu’on vous le demande : à chaque nouvelle tâche ou quand un message change l’objectif, plan.get puis plan.set (objectif en une phrase, 3 à 10 étapes concrètes, dans la langue de l’utilisateur) ; au début et à la fin de chaque étape, plan.update_step. Passez toujours la révision lue ; en cas de REVISION_CONFLICT, relisez avec plan.get puis réessayez. En fin de mission, enregistrez les vérifications avec verification.record et une passation avec session.save_handoff. Les vérifications MCP restent agent_reported."}),
             )
         }
         "ping" => Ok(json!({})),
@@ -210,7 +211,7 @@ mod tests {
     #[test]
     fn lists_real_tools() {
         let list = tools();
-        assert_eq!(list.as_array().unwrap().len(), 13);
+        assert_eq!(list.as_array().unwrap().len(), 14);
         assert!(list
             .as_array()
             .unwrap()

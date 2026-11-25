@@ -1,3 +1,4 @@
+mod agents;
 mod git;
 mod mcp;
 mod remote;
@@ -23,6 +24,7 @@ pub struct State {
     pub workspace: Mutex<Option<Workspace>>,
     pub store: Store,
     pub terminals: terminal::Terminals,
+    pub agents: agents::Agents,
     pub socket: PathBuf,
     watcher: Mutex<Option<RecommendedWatcher>>,
     files_lock: Mutex<()>,
@@ -140,6 +142,31 @@ impl State {
                 let _ = app.emit("plan:changed", json!({"workspaceId":w.id}));
                 Ok(result)
             }
+            // The agent (or Galeata) keeps the mission plan current: objective and steps.
+            "plan.set" => {
+                let steps = args["steps"]
+                    .as_array()
+                    .ok_or("Étapes attendues")?
+                    .iter()
+                    .map(|step| store::PlanStepInput {
+                        id: step["id"].as_str().map(str::to_owned),
+                        title: step["title"].as_str().unwrap_or_default().to_owned(),
+                        status: step["status"].as_str().map(str::to_owned),
+                    })
+                    .collect::<Vec<_>>();
+                let result = self.store.set_plan_document(
+                    &w.id,
+                    Some(expected()?),
+                    required(&args, "objective")?,
+                    &steps,
+                    args["document"].as_str(),
+                    None,
+                    author,
+                    "Plan mis à jour",
+                )?;
+                let _ = app.emit("plan:changed", json!({"workspaceId":w.id}));
+                Ok(result)
+            }
             "plan.update_step" => {
                 let mut plan = self.store.plan(&w.id)?;
                 let id = required(&args, "id")?;
@@ -155,6 +182,11 @@ impl State {
                 step["updatedAt"] = json!(store::now());
                 if let Some(note) = args["note"].as_str() {
                     step["note"] = json!(note)
+                }
+                // A real status change: progress is tracked from now on.
+                if let Some(body) = plan.as_object_mut() {
+                    body.remove("tracked");
+                    body.remove("proposedAt");
                 }
                 let result = self.store.update_plan(
                     &w.id,
@@ -242,16 +274,21 @@ impl State {
                 git::diff(&w, required(&args, "path")?, args["staged"] == true)
             }
             "git.mutate" if !agent => {
-                let result = git::mutate(&w, required(&args, "action")?, &args)?;
+                let _lock = self.files_lock.lock().map_err(|e| e.to_string())?;
+                let result = git::mutate(&w, required(&args, "action")?, &args);
+                // A failed merge/pop may still change files and leave conflicts.
+                let _ = app.emit("workspace:changed", json!({"workspaceId":w.id}));
+                let result = result?;
                 self.store.record(
                     &w.id,
                     "git",
                     author,
                     required(&args, "action")?,
-                    json!({"path":args["path"]}),
+                    json!({"path":args["path"],"name":args["name"]}),
                 )?;
                 Ok(result)
             }
+            "git.overview" => git::overview(&w),
             "git.branches" => Ok(json!(git::git(
                 &w,
                 &["branch", "--format=%(refname:short)"]
@@ -296,6 +333,46 @@ impl State {
                 terminal::close(&self.terminals, required(&args, "id")?)?;
                 Ok(Value::Null)
             }
+            "agent.start" if !agent => agents::start(
+                app,
+                &self.agents,
+                &w,
+                required(&args, "provider")?,
+                args["resumeId"].as_str(),
+                args["mode"].as_str(),
+                &self.socket,
+            ),
+            "agent.send" if !agent => agents::send(
+                &self.agents,
+                required(&args, "id")?,
+                required(&args, "text")?,
+            ),
+            "agent.respond" if !agent => agents::respond(
+                &self.agents,
+                required(&args, "id")?,
+                required(&args, "requestId")?,
+                required(&args, "decision")?,
+            ),
+            "agent.answer" if !agent => agents::answer(
+                &self.agents,
+                required(&args, "id")?,
+                required(&args, "requestId")?,
+                &args["answer"],
+            ),
+            "agent.mode" if !agent => agents::set_mode(
+                &self.agents,
+                required(&args, "id")?,
+                required(&args, "mode")?,
+            ),
+            "agent.models" if !agent => agents::models(&self.agents, required(&args, "id")?),
+            "agent.model" if !agent => agents::set_model(
+                &self.agents,
+                required(&args, "id")?,
+                required(&args, "model")?,
+            ),
+            "agent.interrupt" if !agent => agents::interrupt(&self.agents, required(&args, "id")?),
+            "agent.close" if !agent => agents::close(&self.agents, required(&args, "id")?),
+            "agent.list" if !agent => agents::list(&self.agents, &w.id),
             "ui.open_file" | "ui.show_diff" => {
                 w.resolve(required(&args, "path")?, false)?;
                 let _ = app.emit(
@@ -348,14 +425,60 @@ async fn request(
     .await
     .map_err(|e| e.to_string())?
 }
+// Git/status, editor reloads and searches must not trigger another refresh just by reading.
+fn workspace_event_changes_files(event: &notify::Event) -> bool {
+    !matches!(event.kind, notify::EventKind::Access(_))
+}
+
+#[cfg(test)]
+mod watcher_tests {
+    use super::workspace_event_changes_files;
+    use notify::{
+        event::{AccessKind, AccessMode, CreateKind, DataChange, ModifyKind, RemoveKind},
+        Event, EventKind,
+    };
+
+    #[test]
+    fn reads_do_not_refresh_but_real_file_changes_do() {
+        for access in [
+            AccessKind::Read,
+            AccessKind::Open(AccessMode::Read),
+            AccessKind::Close(AccessMode::Read),
+            AccessKind::Close(AccessMode::Write),
+        ] {
+            assert!(!workspace_event_changes_files(&Event::new(
+                EventKind::Access(access)
+            )));
+        }
+        for kind in [
+            EventKind::Create(CreateKind::File),
+            EventKind::Modify(ModifyKind::Data(DataChange::Any)),
+            EventKind::Remove(RemoveKind::File),
+            EventKind::Any,
+        ] {
+            assert!(workspace_event_changes_files(&Event::new(kind)));
+        }
+    }
+}
+
 #[tauri::command]
 async fn open_workspace(app: tauri::AppHandle, path: String) -> Result<Value> {
     tauri::async_runtime::spawn_blocking(move||{
         let w=Workspace::open(&path)?;let state=app.state::<Arc<State>>();let _gate=state.workspace_gate.write().map_err(|e|e.to_string())?;
         // Existing agents stay associated with their old workspace. Close before switching.
-        if !state.terminals.lock().map_err(|e|e.to_string())?.is_empty(){return Err("Fermez les terminaux et agents avant de changer de dossier".into())}
+        if !state.terminals.lock().map_err(|e|e.to_string())?.is_empty()||agents::any_alive(&state.agents){return Err("Fermez les terminaux et conversations d’agents avant de changer de dossier".into())}
         let event_app=app.clone();let workspace_id=w.id.clone();let last=Arc::new(Mutex::new(std::time::Instant::now()-Duration::from_secs(1)));
-        let mut watcher=notify::recommended_watcher(move|event:std::result::Result<notify::Event,notify::Error>|{if let Ok(event)=event{if let Ok(mut instant)=last.lock(){if instant.elapsed()>Duration::from_millis(200){*instant=std::time::Instant::now();let _=event_app.emit("workspace:changed",json!({"workspaceId":workspace_id,"paths":event.paths}));}}}}).map_err(|e|e.to_string())?;
+        let mut watcher = notify::recommended_watcher(move |event: std::result::Result<notify::Event, notify::Error>| {
+            if let Ok(event) = event {
+                if !workspace_event_changes_files(&event) { return; }
+                if let Ok(mut instant) = last.lock() {
+                    if instant.elapsed() > Duration::from_millis(200) {
+                        *instant = std::time::Instant::now();
+                        let _ = event_app.emit("workspace:changed", json!({"workspaceId":workspace_id,"paths":event.paths}));
+                    }
+                }
+            }
+        }).map_err(|e|e.to_string())?;
         let watched=match watcher.watch(&w.root,RecursiveMode::Recursive){Ok(())=>Some(watcher),Err(error)=>{let _=state.store.record(&w.id,"capability","galeata","Surveillance des fichiers indisponible : actualisez Git et l’arborescence manuellement",json!({"reason":error.to_string()}));None}};
         *state.watcher.lock().map_err(|e|e.to_string())?=watched;
         *state.workspace.lock().map_err(|e|e.to_string())?=Some(w.clone());
@@ -381,6 +504,7 @@ pub fn run() {
                 store: Store::open(&directory.join("galeata.sqlite"))
                     .map_err(std::io::Error::other)?,
                 terminals: Arc::new(Mutex::new(HashMap::new())),
+                agents: Mutex::new(HashMap::new()),
                 socket,
                 watcher: Mutex::new(None),
                 files_lock: Mutex::new(()),
@@ -400,6 +524,7 @@ pub fn run() {
                     let _ = terminal.killer.kill();
                 }
             }
+            agents::stop_all(&state.agents);
             let _ = fs::remove_file(&state.socket);
         }
     });

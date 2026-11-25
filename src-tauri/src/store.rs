@@ -13,6 +13,14 @@ pub fn now() -> u64 {
         .as_millis() as u64
 }
 
+/// A step as given by an agent or extracted from a proposed plan.
+#[derive(Debug, Clone)]
+pub struct PlanStepInput {
+    pub id: Option<String>,
+    pub title: String,
+    pub status: Option<String>,
+}
+
 pub struct Store(pub Mutex<Connection>);
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -77,6 +85,105 @@ impl Store {
         tx.commit().map_err(|e| e.to_string())?;
         Ok(body)
     }
+    /// Replaces the objective and steps (agent or automatic update). Steps that
+    /// keep their id or title keep their state, note and history, so a refreshed
+    /// plan never resets what is already done. `expected: None` uses the current
+    /// revision (Galeata's own updates); agents pass the revision they read.
+    pub fn set_plan(
+        &self,
+        workspace: &str,
+        expected: Option<u64>,
+        objective: &str,
+        steps: &[PlanStepInput],
+        author: &str,
+        message: &str,
+    ) -> Result<Value> {
+        self.set_plan_document(
+            workspace, expected, objective, steps, None, None, author, message,
+        )
+    }
+
+    /// Same as [`Store::set_plan`], with the plan's full text (markdown) shown to
+    /// the user. Without a new text, the previous one is kept while the
+    /// objective is unchanged (progress updates), and dropped otherwise.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_plan_document(
+        &self,
+        workspace: &str,
+        expected: Option<u64>,
+        objective: &str,
+        steps: &[PlanStepInput],
+        document: Option<&str>,
+        untracked_since: Option<&str>,
+        author: &str,
+        message: &str,
+    ) -> Result<Value> {
+        let current = self.plan(workspace)?;
+        let revision = current["revision"].as_u64().unwrap_or(0);
+        let existing = current["steps"].as_array().cloned().unwrap_or_default();
+        let normalize = |s: &str| s.trim().to_lowercase();
+        let mut used = std::collections::HashSet::new();
+        let steps = steps
+            .iter()
+            .filter(|step| !step.title.trim().is_empty())
+            .take(100)
+            .map(|step| {
+                let previous = existing.iter().find(|old| {
+                    let id = old["id"].as_str().unwrap_or_default();
+                    !used.contains(id)
+                        && (step.id.as_deref() == Some(id)
+                            || normalize(old["title"].as_str().unwrap_or_default())
+                                == normalize(&step.title))
+                });
+                let id = previous
+                    .and_then(|old| old["id"].as_str())
+                    .map(str::to_owned)
+                    .or_else(|| step.id.clone().filter(|id| !used.contains(id)))
+                    .unwrap_or_else(|| format!("s-{}", &Uuid::new_v4().to_string()[..8]));
+                used.insert(id.clone());
+                let status = step
+                    .status
+                    .clone()
+                    .or_else(|| previous.and_then(|old| old["status"].as_str().map(str::to_owned)))
+                    .unwrap_or_else(|| "pending".to_owned());
+                let changed = previous.is_none_or(|old| old["status"] != json!(status));
+                json!({
+                    "id": id,
+                    "title": step.title.trim().chars().take(1000).collect::<String>(),
+                    "status": status,
+                    "note": previous.and_then(|old| old["note"].as_str()).unwrap_or(""),
+                    "author": if changed { author } else { previous.and_then(|old| old["author"].as_str()).unwrap_or(author) },
+                    "updatedAt": if changed { now() } else { previous.and_then(|old| old["updatedAt"].as_u64()).unwrap_or_else(now) },
+                })
+            })
+            .collect::<Vec<_>>();
+        if steps.is_empty() {
+            return Err("Un plan a besoin d’au moins une étape".into());
+        }
+        let mut body = json!({"objective": objective.trim(), "steps": steps});
+        let document = document.map(str::to_owned).or_else(|| {
+            (current["objective"].as_str().map(str::trim) == Some(objective.trim()))
+                .then(|| current["document"].as_str().map(str::to_owned))
+                .flatten()
+        });
+        if let Some(document) = document.filter(|d| !d.trim().is_empty()) {
+            body["document"] = json!(document);
+        }
+        // A plan taken from an older conversation: its progress was never tracked.
+        // Any real status change (agent or user) writes a body without this flag.
+        if let Some(since) = untracked_since {
+            body["tracked"] = json!(false);
+            body["proposedAt"] = json!(since);
+        }
+        self.update_plan(
+            workspace,
+            expected.unwrap_or(revision),
+            body,
+            author,
+            message,
+        )
+    }
+
     pub fn record(
         &self,
         workspace: &str,
@@ -139,7 +246,12 @@ impl Store {
 fn validate_plan(body: &Value) -> Result<()> {
     let objective = body["objective"].as_str().ok_or("Objectif attendu")?;
     let steps = body["steps"].as_array().ok_or("Étapes attendues")?;
-    if objective.len() > 16_384 || steps.len() > 500 {
+    if objective.len() > 16_384
+        || steps.len() > 500
+        || body["document"]
+            .as_str()
+            .is_some_and(|d| d.len() > 512 * 1024)
+    {
         return Err("Plan trop volumineux".into());
     }
     let mut ids = std::collections::HashSet::new();
@@ -203,6 +315,96 @@ mod tests {
             "Mission"
         );
     }
+    #[test]
+    fn set_plan_keeps_progress_of_unchanged_steps() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(&dir.path().join("p.sqlite")).unwrap();
+        let step = |title: &str, status: Option<&str>| PlanStepInput {
+            id: None,
+            title: title.into(),
+            status: status.map(str::to_owned),
+        };
+        store
+            .set_plan(
+                "w",
+                None,
+                "But",
+                &[step("Lire", None), step("Corriger", None)],
+                "agent:claude",
+                "Plan proposé",
+            )
+            .unwrap();
+        let first = store.plan("w").unwrap();
+        let read_id = first["steps"][0]["id"].as_str().unwrap().to_owned();
+        store
+            .set_plan(
+                "w",
+                None,
+                "But",
+                &[step("Lire", Some("done"))],
+                "agent:claude",
+                "Avancement",
+            )
+            .unwrap();
+        // Same title, new list: the step keeps its id; a new step starts pending.
+        let plan = store
+            .set_plan(
+                "w",
+                None,
+                "But révisé",
+                &[step("lire", None), step("Tester", None)],
+                "agent:claude",
+                "Plan révisé",
+            )
+            .unwrap();
+        assert_eq!(plan["objective"], "But révisé");
+        assert_eq!(plan["steps"][0]["id"], read_id.as_str());
+        assert_eq!(plan["steps"][0]["status"], "done");
+        assert_eq!(plan["steps"][1]["status"], "pending");
+        assert_eq!(plan["revision"], 3);
+        let with_doc = store
+            .set_plan_document(
+                "w",
+                None,
+                "But révisé",
+                &[step("lire", None)],
+                Some("# But révisé\n\n## Contexte"),
+                None,
+                "agent:claude",
+                "Plan proposé",
+            )
+            .unwrap();
+        assert_eq!(with_doc["document"], "# But révisé\n\n## Contexte");
+        // Progress update without text: the document stays; a new objective drops it.
+        let kept = store
+            .set_plan(
+                "w",
+                None,
+                "But révisé",
+                &[step("lire", Some("done"))],
+                "agent:claude",
+                "Avancement",
+            )
+            .unwrap();
+        assert_eq!(kept["document"], "# But révisé\n\n## Contexte");
+        let dropped = store
+            .set_plan(
+                "w",
+                None,
+                "Autre chose",
+                &[step("a", None)],
+                "agent:claude",
+                "Plan",
+            )
+            .unwrap();
+        assert!(dropped.get("document").is_none());
+        // An agent passing a stale revision is refused.
+        assert!(store
+            .set_plan("w", Some(1), "x", &[step("a", None)], "agent:codex", "x")
+            .unwrap_err()
+            .starts_with("REVISION_CONFLICT"));
+    }
+
     #[test]
     fn rejects_duplicate_steps() {
         let s = json!({"id":"a","title":"A","status":"pending","note":"","author":"test","updatedAt":0});

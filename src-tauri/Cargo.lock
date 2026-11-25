@@ -1030,6 +1030,7 @@ dependencies = [
 name = "galeata"
 version = "0.1.0"
 dependencies = [
+ "galeata-agent-protocol",
  "keyring",
  "nix 0.29.0",
  "notify",
@@ -1046,6 +1047,15 @@ dependencies = [
  "ureq",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "galeata-agent-protocol"
+version = "0.1.0"
+dependencies = [
+ "libc",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -1,0 +1,96 @@
+name: Release Galeata
+# Publishes a GitHub Release when a v* tag is pushed. Started by hand
+# (workflow_dispatch), it builds and smoke-tests everything without publishing.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-22.04 # oldest supported glibc: the build runs on newer distributions too
+    env:
+      APPIMAGE_EXTRACT_AND_RUN: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          prefix-key: v1-release-ubuntu22
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libdbus-1-dev file
+      - name: Version consistency
+        run: |
+          node -e '
+            const fs = require("fs");
+            const versions = {
+              "package.json": JSON.parse(fs.readFileSync("package.json")).version,
+              "tauri.conf.json": JSON.parse(fs.readFileSync("src-tauri/tauri.conf.json")).version,
+              "Cargo.toml": /^version = "(.+)"/m.exec(fs.readFileSync("src-tauri/Cargo.toml", "utf8"))[1],
+            };
+            const unique = new Set(Object.values(versions));
+            if (unique.size !== 1) { console.error("Versions divergentes", versions); process.exit(1); }
+            const tag = process.env.GITHUB_REF_TYPE === "tag" ? process.env.GITHUB_REF_NAME : null;
+            if (tag && tag !== "v" + [...unique][0]) { console.error(`Tag ${tag} ≠ version ${[...unique][0]}`); process.exit(1); }
+            fs.writeFileSync("VERSION", "v" + [...unique][0]);
+            console.log("Version", [...unique][0]);'
+      - run: npm ci
+      - run: npm run package -- --bundles appimage,deb
+      - run: node scripts/check-package.mjs
+      - name: Release assets
+        run: |
+          mkdir release
+          cp src-tauri/target/release/bundle/appimage/*.AppImage release/galeata-linux-x86_64.AppImage
+          cp src-tauri/target/release/bundle/deb/*.deb release/galeata-linux-amd64.deb
+          cp VERSION release/VERSION
+          (cd release && sha256sum galeata-linux-x86_64.AppImage galeata-linux-amd64.deb > SHA256SUMS)
+          ls -l release && cat release/SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: galeata-release
+          path: release/
+
+  smoke:
+    needs: build
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ['ubuntu:22.04', 'ubuntu:24.04']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: galeata-release
+          path: release
+      # Minimal desktop graphics runtime plus test tools; no GTK, WebKit or FUSE.
+      - run: |
+          docker run --rm -v "$PWD:/src:ro" ${{ matrix.image }} sh -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq
+            apt-get install -y -qq curl ca-certificates xvfb xauth dbus \
+              libfontconfig1 libwayland-client0 libfribidi0 libharfbuzz0b \
+              libgbm1 libegl1 libgles2 libgl1-mesa-dri fonts-dejavu-core >/dev/null
+            useradd -m tester
+            su tester -c "GALEATA_DOWNLOAD_URL=file:///src/release sh /src/scripts/smoke-release.sh /src/install.sh"'
+
+  publish:
+    needs: smoke
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: galeata-release
+          path: release
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Galeata ${GITHUB_REF_NAME#v}" --generate-notes

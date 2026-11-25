@@ -55,3 +55,13 @@ export function relativeTime(timestamp: number): string {
   const hours = Math.floor(minutes / 60);
   return hours < 24 ? `il y a ${hours} h` : `il y a ${Math.floor(hours / 24)} j`;
 }
+export interface PanelBounds {
+  min: number;
+  max: number;
+}
+// Keeps a dragged or restored panel size usable: never below min, never above max,
+// and falls back to the default when the stored value is not a finite number.
+export function clampSize(value: unknown, bounds: PanelBounds, fallback: number): number {
+  const size = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.round(Math.min(bounds.max, Math.max(bounds.min, size)));
+}

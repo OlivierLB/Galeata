@@ -1,4 +1,4 @@
-import type { Activity, GitStatus, Plan, Workspace } from './types.ts';
+import type { Activity, GitBranch, GitStatus, GitStash, Plan, Workspace } from './types.ts';
 
 export const desktop = '__TAURI_INTERNALS__' in window;
 let activeWorkspace: Workspace | null = null;
@@ -102,7 +102,22 @@ const previewFiles: Record<string, string> = {
   '.gitignore': 'node_modules/\ndist/\nsrc-tauri/target/\n',
   'src-tauri/Cargo.toml': '[package]\nname = "galeata"\nversion = "0.1.0"\nedition = "2021"\n',
 };
-const previewGit: GitStatus = { branch: 'main', isRepo: true, files: [] };
+// One example change, so the editable diff can be tried in the preview.
+const previewGit: GitStatus = {
+  branch: 'main',
+  isRepo: true,
+  files: [{ path: 'README.md', index: ' ', worktree: 'M' }],
+  upstream: 'origin/main',
+  ahead: 1,
+  behind: 0,
+};
+let previewBranches: GitBranch[] = [
+  { name: 'main', remote: false, current: true, upstream: 'origin/main', inWorktree: false },
+  { name: 'feature/interface', remote: false, current: false, upstream: '', inWorktree: false },
+  { name: 'origin/main', remote: true, current: false, upstream: '', inWorktree: false },
+  { name: 'origin/feature/plan', remote: true, current: false, upstream: '', inWorktree: false },
+];
+let previewStashes: (GitStash & { files: GitStatus['files'] })[] = [];
 let previewEvents: Activity[] = [];
 let previewPlan: Plan;
 try {
@@ -157,9 +172,95 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
         nextOffset: null,
       };
     case 'git.status':
-      return previewGit;
+      return structuredClone(previewGit);
+    case 'git.overview':
+      return structuredClone({
+        branches: previewBranches,
+        stashes: previewStashes.map(({ files: _files, ...stash }) => stash),
+        remotes: ['origin'],
+      });
+    case 'git.mutate': {
+      // Demonstration only: these actions update in-memory examples, never local Git.
+      const action = String(args.action);
+      if (action === 'branch' || action === 'switch') {
+        let name = String(args.name ?? '');
+        if (
+          action === 'branch' &&
+          (!name || name.startsWith('-') || /[\s~^:?*\[\\]|\.\.|@\{/.test(name))
+        )
+          throw new Error('Nom de branche invalide');
+        if (action === 'switch') {
+          const selected = previewBranches.find(
+            (branch) => branch.name === name && branch.remote === !!args.remote,
+          );
+          if (!selected) throw new Error('Branche inconnue');
+          if (selected.remote) name = name.slice(name.indexOf('/') + 1);
+        }
+        if (
+          action === 'branch' &&
+          previewBranches.some((branch) => branch.name === name && !branch.remote)
+        )
+          throw new Error('Cette branche existe déjà');
+        if (!previewBranches.some((branch) => branch.name === name && !branch.remote))
+          previewBranches.push({
+            name,
+            remote: false,
+            current: false,
+            upstream: args.remote ? String(args.name) : '',
+            inWorktree: false,
+          });
+        previewBranches = previewBranches.map((branch) => ({
+          ...branch,
+          current: !branch.remote && branch.name === name,
+        }));
+        previewGit.branch = name;
+        previewGit.upstream = previewBranches.find((branch) => branch.current)?.upstream;
+      } else if (action === 'stash') {
+        if (!previewGit.files.length) throw new Error('Aucune modification à mettre de côté');
+        previewStashes.unshift({
+          id: '',
+          oid: crypto.randomUUID(),
+          message: `On ${previewGit.branch}: ${String(args.message || 'Modifications de démonstration')}`,
+          files: structuredClone(previewGit.files),
+        });
+        previewGit.files = [];
+      } else if (action === 'stashApply' || action === 'stashPop') {
+        const stash = previewStashes.find((item) => item.oid === args.oid);
+        if (!stash) throw new Error('Ce stash n’existe plus');
+        if (previewGit.files.length)
+          throw new Error('Mettez d’abord les modifications courantes de côté');
+        previewGit.files = structuredClone(stash.files);
+        if (action === 'stashPop') previewStashes = previewStashes.filter((item) => item !== stash);
+      } else if (action === 'stage' || action === 'unstage') {
+        previewGit.files = previewGit.files.map((file) =>
+          file.path !== args.path
+            ? file
+            : {
+                ...file,
+                index: action === 'stage' ? 'M' : ' ',
+                worktree: action === 'stage' ? ' ' : 'M',
+              },
+        );
+      } else if (action === 'commit') {
+        if (!previewGit.files.some((file) => file.index !== ' '))
+          throw new Error('Aucun changement indexé');
+        previewGit.files = previewGit.files.filter((file) => file.index === ' ');
+        previewGit.ahead = (previewGit.ahead ?? 0) + 1;
+      } else if (action === 'push') {
+        if (args.remote) previewGit.upstream = `${args.remote}/${previewGit.branch}`;
+        previewGit.ahead = 0;
+      } else if (action === 'pull') previewGit.behind = 0;
+      else if (action !== 'fetch' && action !== 'merge')
+        throw new Error('Action indisponible dans l’aperçu');
+      previewStashes = previewStashes.map((stash, index) => ({ ...stash, id: `stash@{${index}}` }));
+      return structuredClone(previewGit);
+    }
+    case 'git.diff': {
+      const modified = previewFiles[String(args.path)] ?? '';
+      return { original: modified.replace('- Un plan toujours visible\n', ''), modified };
+    }
     case 'git.branches':
-      return ['main'];
+      return previewBranches.filter((branch) => !branch.remote).map((branch) => branch.name);
     case 'git.worktrees':
       return 'Aucun worktree connecté dans l’aperçu.';
     case 'plan.get':
@@ -170,9 +271,12 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
         throw new Error('REVISION_CONFLICT : rechargez le plan');
       if (method === 'plan.save')
         previewPlan = { ...(args.plan as Plan), revision: previewPlan.revision + 1 };
+      // A real status change: progress is tracked from now on (as in the app).
       else
         previewPlan = {
           ...previewPlan,
+          tracked: undefined,
+          proposedAt: undefined,
           revision: previewPlan.revision + 1,
           steps: previewPlan.steps.map((step) =>
             step.id === args.id
@@ -202,7 +306,31 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
     case 'activity.list':
       return previewEvents;
     case 'sessions.list':
-      return [];
+      // Example sessions (preview only), to show how they are presented.
+      return [
+        {
+          id: '6e46ad76-900c-41ed-b952-ccc2088beb8d',
+          provider: 'claude',
+          title: 'presentation-theme-shopify',
+          named: true,
+          description: 'Ajoute le header sticky et vérifie le menu mobile',
+          branch: 'theme',
+          path: '',
+          modifiedAt: Date.now() - 2 * 3600 * 1000,
+          summary: '',
+        },
+        {
+          id: '01a20c96-648a-7f13-90e0-faebe8096c41',
+          provider: 'codex',
+          title: 'Galeata',
+          named: true,
+          description: 'Rends les panneaux redimensionnables à la souris',
+          branch: null,
+          path: '',
+          modifiedAt: Date.now() - 26 * 3600 * 1000,
+          summary: '',
+        },
+      ];
     case 'providers.list':
       return ['codex', 'claude'].map((id) => ({
         id,

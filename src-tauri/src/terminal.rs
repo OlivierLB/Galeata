@@ -78,6 +78,11 @@ pub fn start(
         }
     }
     command.cwd(&w.root);
+    // The shell and agents get the user's environment, not the AppImage runtime's.
+    command.env_clear();
+    for (key, value) in galeata_agent_protocol::host_env(std::env::vars_os()) {
+        command.env(key, value);
+    }
     command.env("TERM", "xterm-256color");
     command.env("COLORTERM", "truecolor");
     let pair = native_pty_system()

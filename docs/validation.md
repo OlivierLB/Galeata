@@ -24,6 +24,8 @@ Les lockfiles npm et Cargo proviennent de cette exécution. Le code Rust a été
 - Éditeur simplifié explicitement affiché lorsque Monaco n’est pas disponible.
 - Tests Node et compilation de l’interface avec les outils disponibles localement.
 - Historique et arbres Git locaux synchronisés avec les commits publiés, en contrôlant leurs SHA.
+- 2026-11-24 : les 14 tests Python d’installation passent. L’AppImage et le `.deb` réels ont été construits dans Docker (Ubuntu 22.04) et vérifiés par `check-package.mjs`, puis l’AppImage a été installée localement avec `install.sh`. `smoke-release.sh` passe sur Ubuntu 22.04 et 24.04 : installation sans droits administrateur, passerelle MCP embarquée, résolution des bibliothèques et application maintenue ouverte 15 secondes sous écran virtuel. Les conteneurs fournissent les bibliothèques graphiques de base d’un bureau Linux ; GTK, WebKit et FUSE ne sont pas préinstallés.
+- 2026-11-24 : bibliothèque `galeata-agent-protocol` : 31 tests Rust passent (rejeu des sessions Claude Code 2.1.331 et Codex 0.172.0 capturées, transport de bout en bout avec un faux CLI, arrêt du groupe de processus et échec de démarrage d’un tour Codex). Rustfmt, Clippy avec avertissements refusés et tests du workspace complet passent dans Docker. Tests JavaScript, compilation du front et suite Playwright validés, dont la conservation des brouillons entre onglets et vue partagée ; reprise Claude testée avec un dossier de configuration personnalisé.
 
 Le réseau du shell local ne permettait ni le clonage Git ni l’accès au registre npm ; Rust, Cargo et les outils de développement GTK/WebKitGTK n’y étaient pas installés ; les bibliothèques nécessaires à l’exécution sont présentes. Le connecteur GitHub a permis de publier le code et de vérifier sa compilation sur les runners Linux. L’application de bureau n’a donc pas été lancée interactivement sur ce poste.
 
@@ -34,8 +36,11 @@ Le réseau du shell local ne permettait ni le clonage Git ni l’accès au regis
 - Coffre Secret Service et connexions à des comptes GitHub/GitLab, y compris jetons expirés, accès refusés et indisponibilité réseau.
 - Charge sur de gros dépôts, mémoire et budgets de démarrage/recherche. Les valeurs du plan restent des objectifs, pas des mesures obtenues.
 - Lancement interactif sur Pop!_OS 22.04 et les autres distributions Linux ; aucun support macOS ou Windows annoncé pour cette version.
+- Premier passage distant du workflow `release.yml` et publication d’une GitHub Release. Les contrôles de l’AppImage ont été exécutés localement dans Docker.
 
 ## Reproduire les contrôles
+
+Le 2026-11-25, le choix du modèle a été vérifié sans lancer de requête d’inférence : Claude Code renvoie son catalogue lors de l’initialisation et confirme `set_model` ; Codex renvoie son catalogue via `model/list`. Les tests de protocole couvrent la confirmation ou le refus côté Claude, la pagination côté Codex, et la transmission du modèle choisi à `turn/start`. Les parcours Playwright vérifient les listes propres à chaque fournisseur et la conservation du choix par conversation.
 
 ```sh
 npm ci
@@ -43,10 +48,10 @@ npm test
 npm run build
 npx playwright install chromium
 npm run test:ui
-python3 -m unittest discover -s tests -p test_install_linux.py -v
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
-cargo test --locked --manifest-path src-tauri/Cargo.toml
-cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets
+python3 -m unittest discover -s tests -p 'test_install_*.py' -v
+cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+cargo test --locked --manifest-path src-tauri/Cargo.toml --workspace
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml --workspace --all-targets
 npm run package -- --bundles deb
 node scripts/check-package.mjs
 ```

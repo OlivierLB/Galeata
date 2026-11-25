@@ -7,9 +7,6 @@ import type {
   OpenFile,
   Plan,
   Provider,
-  RemoteConnection,
-  RemoteDetail,
-  RemoteItem,
   SearchHit,
   Session,
   Step,
@@ -21,13 +18,41 @@ import PlanPanel from './components/PlanPanel.tsx';
 import ActivityFeed from './components/ActivityFeed.tsx';
 import Dialog, { type DialogSpec } from './components/Dialog.tsx';
 import type { TerminalLaunch } from './components/TerminalView.tsx';
+import Splitter, { usePanelSize } from './components/Splitter.tsx';
+import AgentWorkspace from './components/AgentWorkspace.tsx';
+import { FilesHome, SearchPage, GitOverview } from './components/WorkspacePages.tsx';
+import GitManager, { GitToolbar, type GitTab } from './components/GitManager.tsx';
+import { sendToAgent, startAgent } from './agents/api.ts';
+import { agentStore } from './agents/store.ts';
+import { mascot } from './mascot/store.ts';
+import TurtleMascot from './components/TurtleMascot.tsx';
+import { providerNames, type Provider as AgentProvider } from './agents/types.ts';
+import {
+  agentModes,
+  readDefaultAgent,
+  readStartMode,
+  writeDefaultAgent,
+  writeStartMode,
+} from './agents/preferences.ts';
 
 const EditorSurface = lazy(() =>
   import('./components/EditorSurface.tsx').catch(() => import('./components/SimpleEditor.tsx')),
 );
 const TerminalView = lazy(() => import('./components/TerminalView.tsx'));
 const initialPlan: Plan = { revision: 0, objective: '', steps: [] };
-type Panel = 'files' | 'search' | 'git' | 'agents' | 'remote' | 'settings';
+// Resizable panels. Absolute bounds here; the editor keeps a minimum share at drag time.
+const wide = typeof window !== 'undefined' && window.innerWidth >= 1650;
+const sidebarBounds = { min: 180, max: 640 };
+const planBounds = { min: 240, max: 720 };
+const bottomBounds = { min: 90, max: 1200 };
+const codeBounds = { min: 320, max: 1600 };
+const codeDefault = 620;
+const sidebarDefault = wide ? 270 : 245;
+const planDefault = wide ? 345 : 315;
+const bottomDefault = 220;
+const editorMinWidth = 360; // the agent conversation keeps at least this width
+const editorMinHeight = 120;
+type Panel = 'files' | 'search' | 'git' | 'agents' | 'settings';
 type Bottom = 'terminal' | 'activity' | 'checks';
 interface TerminalTab {
   launch: TerminalLaunch;
@@ -39,7 +64,6 @@ const panelNames: Record<Panel, string> = {
   search: 'Recherche',
   git: 'Contrôle de source',
   agents: 'Agents & sessions',
-  remote: 'GitHub & GitLab',
   settings: 'Préférences',
 };
 const navigation: { id: Panel; icon: string; label: string }[] = [
@@ -47,13 +71,22 @@ const navigation: { id: Panel; icon: string; label: string }[] = [
   { id: 'search', icon: 'search', label: 'Rechercher' },
   { id: 'git', icon: 'git', label: 'Git' },
   { id: 'agents', icon: 'agents', label: 'Agents et sessions' },
-  { id: 'remote', icon: 'cloud', label: 'GitHub et GitLab' },
 ];
 
 export default function App() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [panel, setPanel] = useState<Panel>('files');
+  const [panel, setPanel] = useState<Panel>('agents');
+  const [mascotAgent, setMascotAgent] = useState('');
   const [plan, setPlan] = useState<Plan>(initialPlan);
+  const previousPlan = useRef({ workspaceId: workspace?.id, plan: initialPlan });
+  useEffect(() => {
+    const { plan: previous, workspaceId } = previousPlan.current;
+    previousPlan.current = { workspaceId: workspace?.id, plan };
+    if (workspaceId !== workspace?.id || !previous.revision || plan.revision <= previous.revision || plan.objective !== previous.objective) return;
+    const completed = plan.steps.some((step) => step.status === 'done'
+      && previous.steps.some((old) => old.id === step.id && old.status !== 'done'));
+    if (completed) mascot.react(plan.steps.every((step) => step.status === 'done') ? 'plan-completed' : 'step-completed');
+  }, [plan, workspace?.id]);
   const [git, setGit] = useState<GitStatus>({ branch: '', isRepo: false, files: [] });
   const [activities, setActivities] = useState<Activity[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -68,12 +101,50 @@ export default function App() {
     original: string;
     modified: string;
     staged: boolean;
+    /** The right side is the working file itself: edits go to its tab and are saved to disk. */
+    editable: boolean;
   } | null>(null);
   const [treeRevision, setTreeRevision] = useState(0);
   const [planVisible, setPlanVisible] = useState(
     () => localStorage.getItem('galeata:plan-visible') !== 'false',
   );
-  const [bottomVisible, setBottomVisible] = useState(true);
+  const [bottomVisible, setBottomVisible] = useState(
+    () => localStorage.getItem('galeata:bottom-visible') === 'true',
+  );
+  // Code is secondary: a right-hand panel opened on demand (file, diff, agent request).
+  const [codeVisible, setCodeVisible] = useState(false);
+  const [defaultAgent, setDefaultAgent] = useState<AgentProvider>(readDefaultAgent);
+  const [startModes, setStartModes] = useState<Record<AgentProvider, string>>(() => ({
+    claude: readStartMode('claude'),
+    codex: readStartMode('codex'),
+  }));
+  const layoutRef = useRef<HTMLElement>(null);
+  const centralRef = useRef<HTMLElement>(null);
+  const [sidebarWidth, setSidebarWidth] = usePanelSize(
+    'galeata:sidebar-width',
+    sidebarDefault,
+    sidebarBounds,
+  );
+  const [planWidth, setPlanWidth] = usePanelSize('galeata:plan-width', planDefault, planBounds);
+  const [codeWidth, setCodeWidth] = usePanelSize('galeata:code-width', codeDefault, codeBounds);
+  const [bottomHeight, setBottomHeight] = usePanelSize(
+    'galeata:bottom-height',
+    bottomDefault,
+    bottomBounds,
+  );
+  // Space left for a side panel once the conversation keeps its minimum width.
+  const sideRoom = (other: number) =>
+    (layoutRef.current?.clientWidth ?? Infinity) - 55 - other - editorMinWidth;
+  const planShown = planVisible && !!workspace;
+  const reviewing = panel === 'git' && !!workspace;
+  const filesPage = panel === 'files' && !!workspace;
+  const agentPage = panel === 'agents' || panel === 'settings';
+  const codeShown = codeVisible && !!workspace && !reviewing && !filesPage;
+  function navigate(next: Panel) {
+    setCodeVisible(false);
+    if (next === 'files') setDiff(null);
+    setPanel(next);
+  }
   const [bottom, setBottom] = useState<Bottom>('terminal');
   const [terminals, setTerminals] = useState<TerminalTab[]>([]);
   const [terminalKey, setTerminalKey] = useState('');
@@ -85,13 +156,12 @@ export default function App() {
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searchNext, setSearchNext] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
+  const searchKey = `${workspace?.id}:${searchFiles}:${query}`;
+  const searchKeyRef = useRef(searchKey);
+  searchKeyRef.current = searchKey;
   const [commitMessage, setCommitMessage] = useState('');
-  const [connection, setConnection] = useState<RemoteConnection | null>(null);
-  const [remoteItems, setRemoteItems] = useState<RemoteItem[]>([]);
-  const [remoteDetail, setRemoteDetail] = useState<{
-    item: RemoteItem;
-    detail: RemoteDetail;
-  } | null>(null);
+  const [gitManager, setGitManager] = useState<GitTab | null>(null);
+  const gitRunning = useRef(false);
   const [mcpConfig, setMcpConfig] = useState<Record<string, unknown> | null>(null);
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
@@ -134,10 +204,10 @@ export default function App() {
   }, [error]);
 
   const openFile = useCallback(
-    async (path: string, targetLine?: number) => {
+    async (path: string, targetLine?: number, reveal = true) => {
       setDiff(null);
-      setRemoteDetail(null);
       setLine(targetLine);
+      if (reveal) setCodeVisible(true);
       if (tabsRef.current.some((file) => file.path === path)) {
         setActive(path);
         return;
@@ -179,8 +249,34 @@ export default function App() {
           staged,
         });
         if (getActiveWorkspace()?.id !== expected) return;
-        setDiff({ path, ...result, staged });
-        setRemoteDetail(null);
+        // Unstaged changes are the working file: open it so the diff can be edited and saved.
+        let editable = false;
+        if (!staged) {
+          if (!tabsRef.current.some((file) => file.path === path)) {
+            const file = await request<{ content: string; stamp: string }>('workspace.read', {
+              path,
+            }).catch(() => null);
+            if (file && getActiveWorkspace()?.id === expected)
+              setTabs((previous) =>
+                previous.some((tab) => tab.path === path)
+                  ? previous
+                  : [
+                      ...previous,
+                      {
+                        path,
+                        content: file.content,
+                        savedContent: file.content,
+                        stamp: file.stamp,
+                        language: languageFor(path),
+                      },
+                    ],
+              );
+            editable = !!file;
+          } else editable = true;
+          if (editable) setActive(path);
+        }
+        setDiff({ path, ...result, staged, editable });
+          setCodeVisible(true);
       } catch (e) {
         error(e);
       }
@@ -203,21 +299,19 @@ export default function App() {
         setActivities([]);
         setPlan(initialPlan);
         setTerminals([]);
-        setConnection(null);
-        setRemoteItems([]);
-        setRemoteDetail(null);
-        setMcpConfig(null);
+        agentStore.clear();
+          setMcpConfig(null);
         setHits([]);
         setTreeRevision((value) => value + 1);
         await refresh();
         void loadSessions();
-        void request<RemoteConnection | null>('remote.connection').then(setConnection).catch(error);
         void request<{ openFiles?: string[]; activeFile?: string } | null>('preferences.get')
           .then(async (layout) => {
             if (layout?.openFiles?.length) {
-              for (const file of layout.openFiles.slice(0, 20)) await openFile(file);
+              for (const file of layout.openFiles.slice(0, 20))
+                await openFile(file, undefined, false);
               if (layout.activeFile) setActive(layout.activeFile);
-            } else if (!desktop) await openFile('README.md');
+            } else if (!desktop) await openFile('README.md', undefined, false);
           })
           .catch(error);
       } catch (e) {
@@ -228,6 +322,14 @@ export default function App() {
     },
     [error, refresh, loadSessions, openFile],
   );
+
+  function openPreferences() {
+    setPanel('settings');
+    // Modes chosen in conversations are remembered: show the current values.
+    setStartModes({ claude: readStartMode('claude'), codex: readStartMode('codex') });
+    if (workspace)
+      void request<Record<string, unknown>>('mcp.config').then(setMcpConfig).catch(error);
+  }
 
   function openFolder() {
     if (tabs.some((file) => file.content !== file.savedContent)) {
@@ -256,6 +358,9 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('galeata:plan-visible', String(planVisible));
   }, [planVisible]);
+  useEffect(() => {
+    localStorage.setItem('galeata:bottom-visible', String(bottomVisible));
+  }, [bottomVisible]);
   useEffect(() => {
     if (!workspace) return;
     const timer = setTimeout(() => {
@@ -353,6 +458,7 @@ export default function App() {
         content: file.content,
         stamp: file.stamp,
       });
+      mascot.react('file-saved');
       setTabs((previous) =>
         previous.map((current) =>
           current.path === path
@@ -405,6 +511,22 @@ export default function App() {
       throw e;
     }
   }
+  /** Asks the most recent running conversation to report each step's real state. */
+  function askProgress() {
+    const conversation = agentStore
+      .getAll()
+      .filter((c) => c.state !== 'exited')
+      .at(-1);
+    if (!conversation) {
+      setToast('Reprenez la conversation de ce plan pour que l’agent fasse le point.');
+      return;
+    }
+    void sendToAgent(
+      conversation.id,
+      'Fais le point sur l’avancement du plan : indique dans Galeata l’état réel de chaque étape (plan.update_step) d’après ce qui a déjà été fait, sans rien refaire.',
+    ).catch(error);
+  }
+
   function updateStep(step: Step, status: Step['status']) {
     void request<Plan>('plan.update_step', { id: step.id, status, revision: plan.revision })
       .then((result) => {
@@ -508,14 +630,44 @@ export default function App() {
       setTerminalKey(terminals.find((tab) => tab.launch.key !== key)?.launch.key ?? '');
   }
   async function mutateGit(action: string, args: Record<string, unknown> = {}) {
+    if (gitRunning.current) throw new Error('Une opération Git est déjà en cours.');
+    const changesFiles = ['branch', 'switch', 'merge', 'mergeAbort', 'mergeContinue', 'stash', 'stashPop', 'stashApply', 'pull'].includes(action);
+    if (changesFiles && tabsRef.current.some((file) => file.content !== file.savedContent)) {
+      const message = 'Enregistrez ou fermez vos onglets modifiés avant cette opération Git.';
+      error(message);
+      throw new Error(message);
+    }
+    const expected = getActiveWorkspace()?.id;
+    gitRunning.current = true;
     setBusy(`Git · ${action}…`);
     try {
-      setGit(await request<GitStatus>('git.mutate', { action, ...args }));
-      await refresh();
+      const result = await request<GitStatus>('git.mutate', { action, ...args });
+      if (getActiveWorkspace()?.id === expected) {
+        setGit(result);
+        setToast(action === 'fetch' ? 'Références distantes actualisées.' : action === 'push' ? 'Commits publiés.' : 'Opération Git terminée.');
+      }
     } catch (e) {
-      error(e);
+      if (getActiveWorkspace()?.id === expected) error(e);
       throw e;
     } finally {
+      if (getActiveWorkspace()?.id === expected) {
+        // Merge/stash failures can still modify files. Refresh even on failure.
+        if (changesFiles) {
+          setDiff(null);
+          setTreeRevision((value) => value + 1);
+          const files = tabsRef.current;
+          const loaded = await Promise.allSettled(files.map((file) => request<{ content: string; stamp: string }>('workspace.read', { path: file.path })));
+          if (getActiveWorkspace()?.id === expected) setTabs((current) => current.map((file) => {
+            const index = files.findIndex((previous) => previous.path === file.path);
+            const result = loaded[index];
+            if (!result || result.status !== 'fulfilled') return { ...file, external: true };
+            return file.content !== file.savedContent ? { ...file, external: true }
+              : { ...file, content: result.value.content, savedContent: result.value.content, stamp: result.value.stamp, external: false };
+          }));
+        }
+        await refresh();
+      }
+      gitRunning.current = false;
       setBusy('');
     }
   }
@@ -553,8 +705,10 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    setHits([]);
+    setSearchNext(null);
+    setSearching(true);
     const timeout = setTimeout(() => {
-      setSearching(true);
       void request<{ items: SearchHit[]; nextOffset: number | null }>(
         searchFiles ? 'workspace.search_files' : 'workspace.search_text',
         { query },
@@ -577,6 +731,25 @@ export default function App() {
       clearTimeout(timeout);
     };
   }, [query, searchFiles, workspace, error]);
+  async function loadMoreSearch() {
+    if (searchNext === null || searching) return;
+    const expected = searchKeyRef.current;
+    setSearching(true);
+    try {
+      const result = await request<{ items: SearchHit[]; nextOffset: number | null }>(
+        searchFiles ? 'workspace.search_files' : 'workspace.search_text',
+        { query, offset: searchNext },
+      );
+      if (searchKeyRef.current !== expected) return;
+      setHits((previous) => [...previous, ...result.items]);
+      setSearchNext(result.nextOffset);
+    } catch (value) {
+      if (searchKeyRef.current === expected) error(value);
+    } finally {
+      if (searchKeyRef.current === expected) setSearching(false);
+    }
+  }
+
   useEffect(() => {
     if (!palette || !paletteQuery.trim() || !workspace) {
       setPaletteHits([]);
@@ -664,48 +837,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [error]);
 
-  async function refreshRemote() {
-    setBusy('Chargement du service distant…');
-    try {
-      setRemoteItems(await request<RemoteItem[]>('remote.list'));
-    } catch (e) {
-      error(e);
-    } finally {
-      setBusy('');
-    }
-  }
-  function connectRemote() {
-    setDialog({
-      title: 'Connecter un service Git',
-      description:
-        'Le jeton est conservé dans le coffre système Linux. Accès requis : lecture du dépôt et des PR/MR et pipelines.',
-      fields: [
-        {
-          name: 'provider',
-          label: 'Service',
-          options: [
-            { value: 'github', label: 'GitHub' },
-            { value: 'gitlab', label: 'GitLab' },
-          ],
-        },
-        {
-          name: 'host',
-          label: 'Origine API (facultatif)',
-          placeholder: 'https://gitlab.mon-entreprise.fr',
-        },
-        { name: 'project', label: 'Projet', placeholder: 'OlivierLB/Galeata', required: true },
-        { name: 'token', label: 'Jeton d’accès', type: 'password', required: true },
-      ],
-      submit: 'Connecter',
-      onSubmit: async (values) => {
-        const args: Record<string, unknown> = { ...values };
-        if (!values.host.trim()) delete args.host;
-        const connected = await request<RemoteConnection>('remote.connect', args);
-        setConnection(connected);
-        await refreshRemote();
-      },
-    });
-  }
   function saveHandoff() {
     setDialog({
       title: 'Préparer la reprise',
@@ -791,14 +922,229 @@ export default function App() {
         claimed.set(file, String(event.data.sessionId));
       }
   const displayFile: OpenFile | undefined = diff
-    ? {
-        path: diff.path,
-        content: diff.modified,
-        savedContent: diff.modified,
-        stamp: '',
-        language: languageFor(diff.path),
-      }
+    ? diff.editable && activeFile?.path === diff.path
+      ? activeFile
+      : {
+          path: diff.path,
+          content: diff.modified,
+          savedContent: diff.modified,
+          stamp: '',
+          language: languageFor(diff.path),
+        }
     : activeFile;
+  const editorDiff = diff
+    ? {
+        original: diff.original,
+        modified:
+          diff.editable && activeFile?.path === diff.path ? activeFile.content : diff.modified,
+        editable: diff.editable && activeFile?.path === diff.path,
+      }
+    : undefined;
+
+  // Shared editor: central in Files/Git, beside conversations and search results.
+  const codeArea = (
+    <>
+      <div className="editor-tabs">
+        <div className="tab-list" role="tablist" aria-label="Fichiers ouverts">
+          {(reviewing ? [] : tabs).map((file) => (
+            <div
+              key={file.path}
+              className={`editor-tab ${active === file.path && !diff ? 'active' : ''}`}
+            >
+              <button
+                role="tab"
+                aria-selected={active === file.path && !diff}
+                aria-label={file.path.split('/').pop()}
+                title={file.path}
+                onClick={() => {
+                  setActive(file.path);
+                  setDiff(null);
+                }}
+              >
+                <span className="tab-file-icon">
+                  {file.path.endsWith('.md') ? 'M↓' : file.path.endsWith('.rs') ? 'Rs' : '✳'}
+                </span>
+                {file.path.split('/').pop()}
+                {file.content !== file.savedContent ? <span className="dirty-dot" /> : null}
+              </button>
+              <button
+                className="tab-close"
+                aria-label={`Fermer ${file.path}`}
+                onClick={() => closeTab(file.path)}
+              >
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          ))}
+          {diff ? (
+            <div className="editor-tab active">
+              <button role="tab" aria-selected="true">
+                <Icon name="git" size={13} />
+                {diff.path.split('/').pop()} · {diff.staged ? 'indexé' : 'diff'}
+                {diff.editable && activeFile?.path === diff.path && activeFile.content !== activeFile.savedContent ? <span className="dirty-dot" /> : null}
+              </button>
+              <button
+                className="tab-close"
+                aria-label="Fermer le diff"
+                onClick={() => setDiff(null)}
+              >
+                <Icon name="close" size={12} />
+              </button>
+            </div>
+          ) : null}
+          {!tabs.length && !diff ? <span className="empty-tab">Bienvenue dans Galeata</span> : null}
+        </div>
+        <div className="editor-tab-actions">
+          {reviewing || filesPage ? null : (
+            <button
+              className="icon-button"
+              title="Fermer le volet de code"
+              aria-label="Fermer le volet de code"
+              onClick={() => setCodeVisible(false)}
+            >
+              <Icon name="close" size={14} />
+            </button>
+          )}
+          <button
+            className="icon-button"
+            title="Enregistrer le fichier"
+            aria-label="Enregistrer le fichier"
+            disabled={!activeFile || (!!diff && !editorDiff?.editable)}
+            onClick={() => void saveFile(active).catch(() => {})}
+          >
+            <Icon name="save" size={14} />
+          </button>
+          <button
+            className="icon-button"
+            title="Renommer le fichier"
+            aria-label="Renommer le fichier"
+            disabled={!activeFile}
+            onClick={() => fileAction('rename')}
+          >
+            <Icon name="edit" size={14} />
+          </button>
+          <button
+            className="icon-button"
+            title="Supprimer le fichier"
+            aria-label="Supprimer le fichier"
+            disabled={!activeFile}
+            onClick={() => fileAction('delete')}
+          >
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
+      </div>
+      {displayFile ? (
+        <>
+          <div className="breadcrumbs">
+            <Icon name="folder" size={13} />
+            <span>{workspace?.name}</span>
+            {displayFile.path.split('/').map((part, index) => (
+              <span key={index}>
+                <Icon name="chevron" size={10} />
+                {part}
+              </span>
+            ))}
+            <span className="editor-language">{displayFile.language}</span>
+          </div>
+          {activeFile?.external && !diff ? (
+            <div className="conflict-banner">
+              <Icon name="warning" size={15} />
+              <span>Ce fichier a changé sur disque. Vos modifications sont conservées.</span>
+              <button
+                className="text-button"
+                onClick={() => {
+                  void request<{ content: string; stamp: string }>('workspace.read', {
+                    path: active,
+                  })
+                    .then((result) =>
+                      setDiff({
+                        path: active,
+                        original: result.content,
+                        modified: activeFile.content,
+                        staged: false,
+                        editable: true,
+                      }),
+                    )
+                    .catch(error);
+                }}
+              >
+                Comparer
+              </button>
+              <button
+                className="text-button"
+                onClick={() =>
+                  setDialog({
+                    title: 'Recharger le fichier',
+                    description: 'Abandonner vos modifications et charger la version du disque ?',
+                    fields: [],
+                    submit: 'Recharger',
+                    danger: true,
+                    onSubmit: async () => {
+                      const result = await request<{ content: string; stamp: string }>(
+                        'workspace.read',
+                        { path: active },
+                      );
+                      setTabs((previous) =>
+                        previous.map((file) =>
+                          file.path === active
+                            ? {
+                                ...file,
+                                content: result.content,
+                                savedContent: result.content,
+                                stamp: result.stamp,
+                                external: false,
+                              }
+                            : file,
+                        ),
+                      );
+                    },
+                  })
+                }
+              >
+                Recharger
+              </button>
+            </div>
+          ) : null}
+          <Suspense fallback={<div className="loading-editor">Préparation de l’éditeur…</div>}>
+            <EditorSurface
+              key={`${workspace?.id}:${displayFile.path}:${diff ? 'diff' : 'edit'}:${diff?.original ?? ''}`}
+              file={displayFile}
+              diff={editorDiff}
+              line={line}
+              onChange={(content) => {
+                mascot.react('text-edit');
+                setTabs((previous) =>
+                  previous.map((file) => (file.path === active ? { ...file, content } : file)),
+                );
+              }}
+              onSave={() => void saveFile(active).catch(() => {})}
+            />
+          </Suspense>
+        </>
+      ) : (
+        <div className="code-empty">
+          <Icon name={reviewing ? 'git' : 'files'} size={28} />
+          {reviewing ? (
+            <>
+              <p>
+                Choisissez un fichier modifié dans Contrôle de source pour relire ses changements.
+              </p>
+              {git.files.length ? (
+                <button className="button" onClick={() => void showDiff(git.files[0].path)}>
+                  Relire {git.files[0].path}
+                </button>
+              ) : (
+                <p className="muted">Aucun changement local.</p>
+              )}
+            </>
+          ) : (
+            <p>Ouvrez un fichier depuis l’explorateur ou depuis une conversation.</p>
+          )}
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="app-shell">
@@ -812,12 +1158,6 @@ export default function App() {
           <span>{workspace?.name ?? 'Ouvrir un projet'}</span>
           <Icon name="chevron" size={12} className="rotated" />
         </button>
-        {workspace && git.isRepo ? (
-          <button className="branch-badge" onClick={() => gitDialog('switch')}>
-            <Icon name="branch" size={13} />
-            {git.branch}
-          </button>
-        ) : null}
         <button className="command-trigger" onClick={() => setPalette(true)}>
           <Icon name="search" size={14} />
           <span>Rechercher un fichier ou une action…</span>
@@ -831,6 +1171,17 @@ export default function App() {
               <span className="status-dot" /> Local
             </span>
           )}
+          {!filesPage && !reviewing ? (
+          <button
+            className={`icon-button ${codeVisible ? 'active' : ''}`}
+            title="Afficher ou masquer le code"
+            aria-label="Afficher ou masquer le code"
+            aria-pressed={codeVisible}
+            onClick={() => setCodeVisible((value) => !value)}
+          >
+            <Icon name="files" />
+          </button>
+          ) : null}
           <button
             className={`icon-button ${planVisible ? 'active' : ''}`}
             title="Afficher ou masquer le plan"
@@ -841,7 +1192,7 @@ export default function App() {
           </button>
         </div>
       </header>
-      <main className="workspace-layout">
+      <main className="workspace-layout" ref={layoutRef}>
         <nav className="activity-rail" aria-label="Navigation principale">
           <div>
             {navigation.map((item) => (
@@ -851,7 +1202,7 @@ export default function App() {
                 title={item.label}
                 aria-label={item.label}
                 aria-pressed={panel === item.id}
-                onClick={() => setPanel(item.id)}
+                onClick={() => navigate(item.id)}
               >
                 <Icon name={item.icon} size={21} />
                 {item.id === 'git' && git.files.length ? (
@@ -878,22 +1229,14 @@ export default function App() {
               className={`rail-button ${panel === 'settings' ? 'active' : ''}`}
               aria-label="Préférences"
               title="Préférences"
-              onClick={() => {
-                setPanel('settings');
-                if (workspace)
-                  void request<Record<string, unknown>>('mcp.config')
-                    .then(setMcpConfig)
-                    .catch(error);
-              }}
+              onClick={openPreferences}
             >
               <Icon name="settings" size={21} />
             </button>
-            <div className="avatar" title="Espace personnel">
-              OL
-            </div>
+            <TurtleMascot compact agentId={mascotAgent || undefined} />
           </div>
         </nav>
-        <aside className="sidebar">
+        <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="panel-heading">
             <span>{panelNames[panel]}</span>
             <button
@@ -905,7 +1248,6 @@ export default function App() {
                 void refresh();
                 setTreeRevision((value) => value + 1);
                 if (panel === 'agents') void loadSessions();
-                if (panel === 'remote' && connection) void refreshRemote();
               }}
             >
               <Icon name="refresh" size={14} />
@@ -954,77 +1296,16 @@ export default function App() {
                     onOpen={(path) => void openFile(path)}
                     onError={error}
                   />
-                  <div className="sidebar-bottom">
-                    <Icon name="spark" size={15} />
-                    <div>
-                      <strong>Gardez le fil.</strong>
-                      <p>Le plan et le contexte restent à portée de main.</p>
-                    </div>
-                  </div>
                 </>
               ) : null}
               {panel === 'search' ? (
-                <div className="sidebar-content">
-                  <div className="search-input">
-                    <Icon name="search" size={15} />
-                    <input
-                      aria-label="Rechercher dans le projet"
-                      placeholder="Rechercher dans le projet…"
-                      value={query}
-                      onChange={(event) => setQuery(event.target.value)}
-                    />
-                  </div>
-                  <label className="checkbox-label">
-                    <input
-                      type="checkbox"
-                      checked={searchFiles}
-                      onChange={(event) => setSearchFiles(event.target.checked)}
-                    />{' '}
-                    Noms de fichiers uniquement
-                  </label>
-                  <p className="section-caption">
-                    {searching
-                      ? 'Recherche…'
-                      : query
-                        ? `${hits.length} résultat(s)`
-                        : 'Recherche locale avec ripgrep'}
-                  </p>
-                  <div className="search-results">
-                    {hits.map((hit, index) => (
-                      <button
-                        key={`${hit.path}:${hit.line}:${index}`}
-                        className="search-hit"
-                        onClick={() => void openFile(hit.path, hit.line || undefined)}
-                      >
-                        <span>
-                          {hit.path}
-                          {hit.line ? <small>:{hit.line}</small> : null}
-                        </span>
-                        {hit.text ? <code>{hit.text.trim()}</code> : null}
-                      </button>
-                    ))}
-                    {query && !searching && !hits.length ? (
-                      <p className="muted">Aucun résultat.</p>
-                    ) : null}
-                    {searchNext !== null ? (
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          void request<{ items: SearchHit[]; nextOffset: number | null }>(
-                            searchFiles ? 'workspace.search_files' : 'workspace.search_text',
-                            { query, offset: searchNext },
-                          )
-                            .then((result) => {
-                              setHits((previous) => [...previous, ...result.items]);
-                              setSearchNext(result.nextOffset);
-                            })
-                            .catch(error);
-                        }}
-                      >
-                        Charger la suite
-                      </button>
-                    ) : null}
-                  </div>
+                <div className="sidebar-content search-sidebar">
+                  <span className="eyebrow">RECHERCHE LOCALE</span>
+                  <h3>Tout le projet, un seul endroit.</h3>
+                  <p className="small-copy muted">Recherchez dans le contenu ou les noms de fichiers depuis la page centrale.</p>
+                  <div className="section-line"><h3>Résultats</h3><span className="count">{hits.length}</span></div>
+                  <p className="small-copy muted">{query.trim() ? `Recherche : « ${query} »` : 'Saisissez un terme pour commencer.'}</p>
+                  <p className="small-copy muted">Un clic ouvre le fichier à côté des résultats, à la ligne choisie.</p>
                 </div>
               ) : null}
               {panel === 'git' ? (
@@ -1038,18 +1319,9 @@ export default function App() {
                         </span>
                         <span className="count">{git.files.length}</span>
                       </div>
-                      <div className="git-actions">
-                        {['fetch', 'pull', 'push'].map((action) => (
-                          <button
-                            key={action}
-                            className="button secondary small"
-                            disabled={!!busy}
-                            onClick={() => void mutateGit(action).catch(() => {})}
-                          >
-                            {action}
-                          </button>
-                        ))}
-                      </div>
+                      <button className="sidebar-action" onClick={() => setGitManager('branches')}><Icon name="branch" size={15} /> Branches et synchronisation</button>
+                      <button className="sidebar-action" onClick={() => setGitManager('stashes')}><Icon name="history" size={15} /> Mettre de côté / restaurer</button>
+                      {git.merging || git.files.some((file) => file.conflicted) ? <div className="git-notice"><strong>{git.merging ? 'Fusion en cours' : 'Conflits à résoudre'}</strong><p>Corrigez les fichiers en conflit, puis indexez-les.</p><button className="text-button" onClick={() => setGitManager('branches')}>Suivre la résolution</button></div> : null}
                       <textarea
                         className="commit-input"
                         aria-label="Message de commit"
@@ -1081,7 +1353,7 @@ export default function App() {
                             title={`Diff non indexé : ${file.path}`}
                             onClick={() => void showDiff(file.path, false)}
                           >
-                            <span className="git-status-letter">
+                            <span className={`git-status-letter ${file.conflicted ? 'conflicted' : ''}`}>
                               {file.worktree === ' ' ? file.index : file.worktree}
                             </span>
                             {file.path}
@@ -1129,7 +1401,7 @@ export default function App() {
                       <div className="section-line">
                         <h3>Branches & isolation</h3>
                       </div>
-                      <button className="sidebar-action" onClick={() => gitDialog('branch')}>
+                      <button className="sidebar-action" onClick={() => setGitManager('branches')}>
                         <Icon name="branch" size={15} />
                         Créer une branche
                       </button>
@@ -1178,24 +1450,35 @@ export default function App() {
                         <div className="provider-logo">{id === 'codex' ? '⌘' : '✳'}</div>
                         <div>
                           <strong>{id === 'codex' ? 'Codex' : 'Claude Code'}</strong>
-                          <span>
+                          <span title={provider?.error ?? undefined}>
                             {provider?.available
-                              ? 'Installé · terminal local'
+                              ? provider.version || 'Installé'
                               : !desktop
                                 ? 'Application de bureau requise'
-                                : providers.length
-                                  ? 'Non disponible'
-                                  : 'Détection…'}
+                                : provider?.error
+                                  ? 'Installé mais impossible à lancer'
+                                  : providers.length
+                                    ? 'Non installé'
+                                    : 'Détection…'}
                           </span>
                         </div>
                         <button
                           className="icon-button"
-                          title={`Lancer ${id}`}
-                          aria-label={`Lancer ${id}`}
+                          title="Nouvelle conversation"
+                          aria-label={`Nouvelle conversation ${id}`}
+                          disabled={!provider?.available}
+                          onClick={() => void startAgent(id as AgentProvider).catch(error)}
+                        >
+                          <Icon name="play" size={14} />
+                        </button>
+                        <button
+                          className="icon-button"
+                          title="Ouvrir dans le terminal (interface d’origine)"
+                          aria-label={`Ouvrir ${id} dans le terminal`}
                           disabled={!provider?.available}
                           onClick={() => launchAgent(id)}
                         >
-                          <Icon name="play" size={14} />
+                          <Icon name="terminal" size={14} />
                         </button>
                       </div>
                     );
@@ -1252,9 +1535,10 @@ export default function App() {
                                 event.kind === 'handoff' && event.data.sessionId === session.id,
                             )?.message}
                         </p>
-                      ) : (
-                        <p className="muted">Pas de résumé fourni par l’outil.</p>
-                      )}
+                      ) : session.description ? (
+                        <p>{session.description}</p>
+                      ) : null}
+                      {session.branch ? <small>Branche {session.branch}</small> : null}
                       {session.parentId ? (
                         <small>Sous-agent · parent {session.parentId.slice(0, 8)}</small>
                       ) : null}
@@ -1263,7 +1547,7 @@ export default function App() {
                         disabled={
                           !providers.find((provider) => provider.id === session.provider)?.available
                         }
-                        onClick={() => launchAgent(session.provider, session.id)}
+                        onClick={() => void startAgent(session.provider, session.id).catch(error)}
                       >
                         Reprendre <Icon name="arrow" size={13} />
                       </button>
@@ -1278,77 +1562,6 @@ export default function App() {
                   </button>
                 </div>
               ) : null}
-              {panel === 'remote' ? (
-                <div className="sidebar-content">
-                  {connection ? (
-                    <>
-                      <div className="connection-card">
-                        <Icon name="cloud" size={24} />
-                        <strong>{connection.provider === 'github' ? 'GitHub' : 'GitLab'}</strong>
-                        <code>{connection.project}</code>
-                        <small>{connection.host}</small>
-                      </div>
-                      <button
-                        className="button full"
-                        disabled={!!busy}
-                        onClick={() => void refreshRemote()}
-                      >
-                        Charger les PR / MR
-                      </button>
-                      <p className="section-caption">DEMANDES OUVERTES · 50 PREMIÈRES</p>
-                      {remoteItems.map((item) => (
-                        <button
-                          className="remote-item"
-                          key={item.id}
-                          onClick={() => {
-                            setBusy('Chargement des changements…');
-                            void request<RemoteDetail>('remote.detail', { id: item.id })
-                              .then((detail) => {
-                                setRemoteDetail({ item, detail });
-                                setDiff(null);
-                              })
-                              .catch(error)
-                              .finally(() => setBusy(''));
-                          }}
-                        >
-                          <span>
-                            #{item.id} <span className="remote-state">{item.state}</span>
-                          </span>
-                          <strong>{item.title}</strong>
-                          <small>
-                            {item.source} → {item.target}
-                          </small>
-                        </button>
-                      ))}
-                      <button
-                        className="text-button"
-                        onClick={() => {
-                          void request('remote.disconnect')
-                            .then(() => {
-                              setConnection(null);
-                              setRemoteItems([]);
-                            })
-                            .catch(error);
-                        }}
-                      >
-                        Déconnecter
-                      </button>
-                    </>
-                  ) : (
-                    <div className="empty-state compact">
-                      <Icon name="cloud" size={32} />
-                      <h3>Le dépôt, au-delà du local.</h3>
-                      <p>
-                        Consultez vos demandes de changement et leurs vérifications sans quitter
-                        Galeata.
-                      </p>
-                      <button className="button small" onClick={connectRemote}>
-                        Connecter GitHub / GitLab
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ) : null}
               {panel === 'settings' ? (
                 <div className="sidebar-content">
                   <p className="section-caption">GALEATA 0.1.0 · LINUX</p>
@@ -1356,6 +1569,66 @@ export default function App() {
                   <p className="small-copy muted">
                     Plans et historique restent sur votre machine. Aucun compte Galeata ni
                     télémétrie.
+                  </p>
+                  <div className="section-line">
+                    <h3>Agent par défaut</h3>
+                  </div>
+                  <p className="small-copy muted">
+                    Lancé par le bouton « + » des conversations. Si celui-ci n’est pas installé,
+                    l’autre est utilisé.
+                  </p>
+                  <div className="segmented" role="radiogroup" aria-label="Agent par défaut">
+                    {(['claude', 'codex'] as AgentProvider[]).map((id) => {
+                      const info = providers.find((provider) => provider.id === id);
+                      return (
+                        <button
+                          key={id}
+                          role="radio"
+                          aria-checked={defaultAgent === id}
+                          className={defaultAgent === id ? 'active' : ''}
+                          title={info?.error ?? undefined}
+                          onClick={() => {
+                            setDefaultAgent(id);
+                            writeDefaultAgent(id);
+                          }}
+                        >
+                          {providerNames[id]}
+                          {desktop && info && !info.available ? ' · indisponible' : ''}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {(['claude', 'codex'] as AgentProvider[]).map((agentId) => (
+                    <div key={agentId}>
+                      <div className="section-line">
+                        <h3>Mode de {providerNames[agentId]} au démarrage</h3>
+                      </div>
+                      <div
+                        className="segmented"
+                        role="radiogroup"
+                        aria-label={`Mode de ${providerNames[agentId]} au démarrage`}
+                      >
+                        {agentModes[agentId].map((mode) => (
+                          <button
+                            key={mode.id}
+                            role="radio"
+                            aria-checked={startModes[agentId] === mode.id}
+                            className={`${startModes[agentId] === mode.id ? 'active' : ''} ${mode.danger ? 'danger' : ''}`}
+                            title={mode.hint}
+                            onClick={() => {
+                              setStartModes((previous) => ({ ...previous, [agentId]: mode.id }));
+                              writeStartMode(agentId, mode.id);
+                            }}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  <p className="small-copy muted">
+                    Le dernier mode choisi dans une conversation (sélecteur ou Maj+Tab) devient
+                    celui des prochaines.
                   </p>
                   <div className="section-line">
                     <h3>MCP interne</h3>
@@ -1406,205 +1679,69 @@ export default function App() {
             </>
           )}
         </aside>
-        <section className="central-workspace" aria-label="Espace de travail">
-          <div className="editor-tabs">
-            <div className="tab-list" role="tablist" aria-label="Fichiers ouverts">
-              {tabs.map((file) => (
-                <div
-                  key={file.path}
-                  className={`editor-tab ${active === file.path && !diff && !remoteDetail ? 'active' : ''}`}
-                >
-                  <button
-                    role="tab"
-                    aria-selected={active === file.path && !diff && !remoteDetail}
-                    title={file.path}
-                    onClick={() => {
-                      setActive(file.path);
-                      setDiff(null);
-                      setRemoteDetail(null);
-                    }}
-                  >
-                    <span className="tab-file-icon">
-                      {file.path.endsWith('.md') ? 'M↓' : file.path.endsWith('.rs') ? 'Rs' : '✳'}
-                    </span>
-                    {file.path.split('/').pop()}
-                    {file.content !== file.savedContent ? <span className="dirty-dot" /> : null}
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label={`Fermer ${file.path}`}
-                    onClick={() => closeTab(file.path)}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                </div>
-              ))}
-              {diff ? (
-                <div className="editor-tab active">
-                  <button role="tab" aria-selected="true">
-                    <Icon name="git" size={13} />
-                    {diff.path.split('/').pop()} · {diff.staged ? 'indexé' : 'diff'}
-                  </button>
-                  <button
-                    className="tab-close"
-                    aria-label="Fermer le diff"
-                    onClick={() => setDiff(null)}
-                  >
-                    <Icon name="close" size={12} />
-                  </button>
-                </div>
-              ) : null}
-              {!tabs.length && !diff ? (
-                <span className="empty-tab">Bienvenue dans Galeata</span>
-              ) : null}
+        <Splitter
+          label="Largeur du panneau latéral"
+          orientation="vertical"
+          size={sidebarWidth}
+          bounds={sidebarBounds}
+          direction={1}
+          onResize={(size) =>
+            setSidebarWidth(
+              Math.min(
+                size,
+                sideRoom((planShown ? planWidth : 0) + (codeShown && !reviewing ? codeWidth : 0)),
+              ),
+            )
+          }
+          onReset={() => setSidebarWidth(sidebarDefault)}
+        />
+        <section className="central-workspace" aria-label="Espace de travail" ref={centralRef}>
+          {workspace ? (
+            <div className="agent-layer" hidden={!agentPage}>
+              <AgentWorkspace
+                providers={providers}
+                sessions={sessions}
+                onOpenFile={(path) => void openFile(path)}
+                onShowDiff={(path) => void showDiff(path)}
+                onOpenTerminal={(provider, sessionId) => launchAgent(provider, sessionId)}
+                defaultAgent={defaultAgent}
+                onOpenPreferences={openPreferences}
+                onError={error}
+                onRefreshProviders={() => void loadSessions()}
+                onActiveChange={setMascotAgent}
+              />
             </div>
-            <div className="editor-tab-actions">
-              <button
-                className="icon-button"
-                title="Enregistrer le fichier"
-                aria-label="Enregistrer le fichier"
-                disabled={!activeFile || !!diff}
-                onClick={() => void saveFile(active).catch(() => {})}
-              >
-                <Icon name="save" size={14} />
-              </button>
-              <button
-                className="icon-button"
-                title="Renommer le fichier"
-                aria-label="Renommer le fichier"
-                disabled={!activeFile}
-                onClick={() => fileAction('rename')}
-              >
-                <Icon name="edit" size={14} />
-              </button>
-              <button
-                className="icon-button"
-                title="Supprimer le fichier"
-                aria-label="Supprimer le fichier"
-                disabled={!activeFile}
-                onClick={() => fileAction('delete')}
-              >
-                <Icon name="trash" size={14} />
-              </button>
-            </div>
-          </div>
-          {remoteDetail ? (
-            <div className="remote-detail">
-              <div className="remote-detail-heading">
-                <span className="eyebrow">DEMANDE #{remoteDetail.item.id}</span>
-                <h2>{remoteDetail.item.title}</h2>
-                <p>
-                  {remoteDetail.item.source} → {remoteDetail.item.target}
-                </p>
-                <button className="text-button" onClick={() => setRemoteDetail(null)}>
-                  Revenir à l’éditeur
-                </button>
-              </div>
-              <div className="remote-checks">
-                {remoteDetail.detail.checks.map((check) => (
-                  <span key={check.name} className="check-chip">
-                    {check.name} · {check.status}
-                  </span>
-                ))}
-              </div>
-              <p className="muted small-copy">
-                Affichage limité aux 100 premiers fichiers et résultats CI fournis par le service.
-              </p>
-              {remoteDetail.detail.changes.map((change) => (
-                <section className="remote-change" key={change.path}>
-                  <h3>{change.path}</h3>
-                  <pre>{change.patch}</pre>
-                </section>
-              ))}
-            </div>
-          ) : displayFile ? (
-            <>
-              <div className="breadcrumbs">
-                <Icon name="folder" size={13} />
-                <span>{workspace?.name}</span>
-                {displayFile.path.split('/').map((part, index) => (
-                  <span key={index}>
-                    <Icon name="chevron" size={10} />
-                    {part}
-                  </span>
-                ))}
-                <span className="editor-language">{displayFile.language}</span>
-              </div>
-              {activeFile?.external && !diff ? (
-                <div className="conflict-banner">
-                  <Icon name="warning" size={15} />
-                  <span>Ce fichier a changé sur disque. Vos modifications sont conservées.</span>
-                  <button
-                    className="text-button"
-                    onClick={() => {
-                      void request<{ content: string; stamp: string }>('workspace.read', {
-                        path: active,
-                      })
-                        .then((result) =>
-                          setDiff({
-                            path: active,
-                            original: result.content,
-                            modified: activeFile.content,
-                            staged: false,
-                          }),
-                        )
-                        .catch(error);
-                    }}
-                  >
-                    Comparer
-                  </button>
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      setDialog({
-                        title: 'Recharger le fichier',
-                        description:
-                          'Abandonner vos modifications et charger la version du disque ?',
-                        fields: [],
-                        submit: 'Recharger',
-                        danger: true,
-                        onSubmit: async () => {
-                          const result = await request<{ content: string; stamp: string }>(
-                            'workspace.read',
-                            { path: active },
-                          );
-                          setTabs((previous) =>
-                            previous.map((file) =>
-                              file.path === active
-                                ? {
-                                    ...file,
-                                    content: result.content,
-                                    savedContent: result.content,
-                                    stamp: result.stamp,
-                                    external: false,
-                                  }
-                                : file,
-                            ),
-                          );
-                        },
-                      })
-                    }
-                  >
-                    Recharger
-                  </button>
+          ) : null}
+          {filesPage ? (
+            <section className="review-area files-area" aria-label="Fichiers du projet">
+              {activeFile ? codeArea : <FilesHome workspace={workspace} git={git}
+                onFind={() => { setPaletteQuery(''); setPalette(true); }}
+                onCreate={() => fileAction('create')} onOpen={(path) => void openFile(path)} />}
+            </section>
+          ) : null}
+          {workspace && panel === 'search' ? (
+            <section className="search-area" aria-label="Recherche dans le projet">
+              <SearchPage query={query} filesOnly={searchFiles} hits={hits} searching={searching}
+                hasMore={searchNext !== null} onQuery={setQuery} onFilesOnly={setSearchFiles}
+                onOpen={(hit) => void openFile(hit.path, hit.line || undefined)} onMore={() => void loadMoreSearch()} />
+            </section>
+          ) : null}
+          {reviewing ? (
+            <section className="review-area" aria-label="Relecture du code">
+              <GitToolbar git={git} busy={!!busy} onManage={setGitManager}
+                onMutate={(action) => void mutateGit(action).catch(() => {})} />
+              {diff ? <>
+                <div className="diff-page-toolbar">
+                  <button className="text-button" onClick={() => setDiff(null)}><Icon name="git" size={15} /> Vue d’ensemble</button>
+                  <span>{diff.staged ? 'HEAD → Index' : 'Index → Fichier de travail'}</span>
+                  <button className="text-button" onClick={() => { navigate('files'); void openFile(diff.path); }}>Ouvrir le fichier <Icon name="arrow" size={14} /></button>
                 </div>
-              ) : null}
-              <Suspense fallback={<div className="loading-editor">Préparation de l’éditeur…</div>}>
-                <EditorSurface
-                  key={`${workspace?.id}:${displayFile.path}:${diff ? 'diff' : 'edit'}:${diff?.original ?? ''}`}
-                  file={displayFile}
-                  diff={diff ?? undefined}
-                  line={line}
-                  onChange={(content) =>
-                    setTabs((previous) =>
-                      previous.map((file) => (file.path === active ? { ...file, content } : file)),
-                    )
-                  }
-                  onSave={() => void saveFile(active).catch(() => {})}
-                />
-              </Suspense>
-            </>
-          ) : (
+                {codeArea}
+              </> : <GitOverview git={git} onDiff={(path, staged) => void showDiff(path, staged)} onRefresh={() => void refresh()}
+                onTerminal={() => { setBottom('terminal'); setBottomVisible(true); }} />}
+            </section>
+          ) : null}
+          {workspace ? null : (
             <div className="welcome">
               <div className="welcome-emblem">
                 <Icon name="spark" size={48} />
@@ -1655,7 +1792,26 @@ export default function App() {
             </div>
           )}
           {bottomVisible ? (
-            <section className="bottom-panel" aria-label="Terminal et activité">
+            <Splitter
+              label="Hauteur du panneau inférieur"
+              orientation="horizontal"
+              size={bottomHeight}
+              bounds={bottomBounds}
+              direction={-1}
+              onResize={(size) =>
+                setBottomHeight(
+                  Math.min(size, (centralRef.current?.clientHeight ?? Infinity) - editorMinHeight),
+                )
+              }
+              onReset={() => setBottomHeight(bottomDefault)}
+            />
+          ) : null}
+          {bottomVisible ? (
+            <section
+              className="bottom-panel"
+              aria-label="Terminal et activité"
+              style={{ height: bottomHeight }}
+            >
               <div className="bottom-heading">
                 <div className="bottom-tabs" role="tablist" aria-label="Outils du projet">
                   {(
@@ -1782,25 +1938,62 @@ export default function App() {
             </section>
           ) : null}
         </section>
+        {codeShown && !reviewing ? (
+          <Splitter
+            label="Largeur du volet de code"
+            orientation="vertical"
+            size={codeWidth}
+            bounds={codeBounds}
+            direction={-1}
+            onResize={(size) =>
+              setCodeWidth(Math.min(size, sideRoom(sidebarWidth + (planShown ? planWidth : 0))))
+            }
+            onReset={() => setCodeWidth(codeDefault)}
+          />
+        ) : null}
+        {codeShown && !reviewing ? (
+          <section className="code-panel" aria-label="Volet de code" style={{ width: codeWidth }}>
+            {codeArea}
+          </section>
+        ) : null}
+        {planVisible && workspace ? (
+          <Splitter
+            label="Largeur du plan"
+            orientation="vertical"
+            size={planWidth}
+            bounds={planBounds}
+            direction={-1}
+            onResize={(size) =>
+              setPlanWidth(
+                Math.min(size, sideRoom(sidebarWidth + (codeShown && !reviewing ? codeWidth : 0))),
+              )
+            }
+            onReset={() => setPlanWidth(planDefault)}
+          />
+        ) : null}
         {planVisible && workspace ? (
           <PlanPanel
+            width={planWidth}
             plan={plan}
             activities={activities}
             onSave={savePlan}
             onStep={updateStep}
-            onCollapse={() => setPlanVisible(false)}
             onHistory={() => {
               setBottom('activity');
               setBottomVisible(true);
             }}
             onEdit={editObjective}
+            onAskProgress={askProgress}
           />
         ) : null}
       </main>
+      {gitManager && workspace ? <GitManager key={workspace.id} workspaceId={workspace.id} git={git}
+        initialTab={gitManager} busy={!!busy} dirty={tabs.some((file) => file.content !== file.savedContent)}
+        onClose={() => setGitManager(null)} onMutate={mutateGit} /> : null}
       <footer className="statusbar">
         <div>
           {git.isRepo ? (
-            <button onClick={() => setPanel('git')}>
+            <button aria-label={`Gérer les branches : ${git.branch}`} title="Changer de branche, fusionner et gérer les stash" onClick={() => setGitManager('branches')}>
               <Icon name="branch" size={12} />
               {git.branch}
             </button>
@@ -1810,7 +2003,7 @@ export default function App() {
               {workspace ? 'Dossier local' : 'Aucun projet'}
             </span>
           )}
-          <button onClick={() => setPanel('agents')}>
+          <button onClick={() => navigate('agents')}>
             <Icon name="agents" size={12} />
             {activeCount ? `${activeCount} agent(s) déclaré(s) actif(s)` : 'Agents au repos'}
           </button>

@@ -1,0 +1,86 @@
+{
+  "description": "Original turtle sprite sheets supplied by the user. Identical downloads are stored once.",
+  "assets": [
+    {
+      "file": "turtle-jump.png",
+      "sha256": "c105c6e5cb983f2e7c3d69aad23df14e46b60690731d0b5be3afe25722fd9501",
+      "sources": [
+        "Cinq poses d’une tortue célébrant un but(1).png",
+        "Cinq poses d’une tortue célébrant un but(2).png",
+        "Cinq poses d’une tortue célébrant un but(3).png",
+        "Cinq poses d’une tortue célébrant un but.png"
+      ]
+    },
+    {
+      "file": "turtle-goal.png",
+      "sha256": "65b98870f6d3e1e9c3b5f390c3838a4790116ae99b9c93eebe240f01c88094d4",
+      "sources": [
+        "Célébration de but en cinq poses-4(1).png",
+        "Célébration de but en cinq poses-4(2).png",
+        "Célébration de but en cinq poses-4(3).png",
+        "Célébration de but en cinq poses-4(4).png",
+        "Célébration de but en cinq poses-4.png"
+      ]
+    },
+    {
+      "file": "turtle-oops.png",
+      "sha256": "22491757c36c93aaba9a1985914369fd52982283e0d68cb5194d0df612b519dc",
+      "sources": [
+        "Huit poses de maladresse cartoon-5(1).png",
+        "Huit poses de maladresse cartoon-5(2).png",
+        "Huit poses de maladresse cartoon-5(3).png",
+        "Huit poses de maladresse cartoon-5(4).png",
+        "Huit poses de maladresse cartoon-5.png"
+      ]
+    },
+    {
+      "file": "turtle-respond.png",
+      "sha256": "6c2cddac12568c4037e87c446207f2e3f29600e1faa255cf70fcc34aaaedce4f",
+      "sources": [
+        "Sprite en huit poses sur fond cyan-3(1).png",
+        "Sprite en huit poses sur fond cyan-3(2).png",
+        "Sprite en huit poses sur fond cyan-3(3).png",
+        "Sprite en huit poses sur fond cyan-3(4).png",
+        "Sprite en huit poses sur fond cyan-3.png"
+      ]
+    },
+    {
+      "file": "turtle-celebrate.png",
+      "sha256": "34aae57fe2aedf31c37bd3a3fb29ab2bad5bedc562bd7d850ccd615606398804",
+      "sources": [
+        "Tortue marine en danse de victoire-1(1).png",
+        "Tortue marine en danse de victoire-1.png"
+      ]
+    },
+    {
+      "file": "turtle-think.png",
+      "sha256": "d5b93b4b6c0fea940553bc9d18b14a43e5efb276624dd9bce48fd019c1b9b653",
+      "sources": [
+        "Tortue rétro en huit poses-2(1).png",
+        "Tortue rétro en huit poses-2(2).png",
+        "Tortue rétro en huit poses-2(3).png",
+        "Tortue rétro en huit poses-2(4).png",
+        "Tortue rétro en huit poses-2.png"
+      ]
+    },
+    {
+      "file": "turtle-dance.png",
+      "sha256": "93ef2c96bbf4bb1663db443d3550f5615bb93420fa1614b88fa422f19daded15",
+      "sources": [
+        "Tortue rétro en quatre poses de breakdance-2(1).png",
+        "Tortue rétro en quatre poses de breakdance-2.png"
+      ]
+    },
+    {
+      "file": "turtle-look.png",
+      "sha256": "0e75ab51a7f613c298d28e5c4c054608fcd33af2a4d9f0180f24b622a9787074",
+      "sources": [
+        "Tortue rétro, quatre directions du regard-1(1).png",
+        "Tortue rétro, quatre directions du regard-1(2).png",
+        "Tortue rétro, quatre directions du regard-1(3).png",
+        "Tortue rétro, quatre directions du regard-1(4).png",
+        "Tortue rétro, quatre directions du regard-1.png"
+      ]
+    }
+  ]
+}
