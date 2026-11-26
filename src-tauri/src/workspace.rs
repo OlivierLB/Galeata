@@ -246,6 +246,18 @@ pub fn run_outcome(
     timeout: Duration,
     limit: usize,
 ) -> Result<(String, i32, String)> {
+    run_with_input(root, program, args, codes, timeout, limit, None)
+}
+#[allow(clippy::too_many_arguments)]
+pub fn run_with_input(
+    root: &Path,
+    program: &str,
+    args: &[&str],
+    codes: &[i32],
+    timeout: Duration,
+    limit: usize,
+    input: Option<Vec<u8>>,
+) -> Result<(String, i32, String)> {
     let mut command = Command::new(program);
     command
         .args(args)
@@ -254,7 +266,11 @@ pub fn run_outcome(
         .env_clear()
         .envs(galeata_agent_protocol::host_env(std::env::vars_os()))
         .env("GIT_TERMINAL_PROMPT", "0")
-        .stdin(Stdio::null())
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     #[cfg(unix)]
@@ -263,6 +279,17 @@ pub fn run_outcome(
         command.process_group(0);
     }
     let mut child = command.spawn().map_err(|e| format!("{program}: {e}"))?;
+    let input_result = if let Some(input) = input {
+        let mut stdin = child.stdin.take().ok_or("stdin indisponible")?;
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        std::thread::spawn(move || {
+            use std::io::Write;
+            let _ = sender.send(stdin.write_all(&input));
+        });
+        Some(receiver)
+    } else {
+        None
+    };
     let stdout = child.stdout.take().ok_or("stdout indisponible")?;
     let stderr = child.stderr.take().ok_or("stderr indisponible")?;
     let (out_tx, out_rx) = std::sync::mpsc::sync_channel(1);
@@ -289,6 +316,12 @@ pub fn run_outcome(
         std::thread::sleep(Duration::from_millis(20));
     };
     let remaining = || timeout.saturating_sub(started.elapsed());
+    if let Some(receiver) = input_result {
+        receiver
+            .recv_timeout(remaining())
+            .map_err(|_| format!("{program}: délai d’écriture dépassé"))?
+            .map_err(|error| error.to_string())?;
+    }
     let bytes = match out_rx.recv_timeout(remaining()) {
         Ok(v) => v.map_err(|e| e.to_string())?,
         Err(_) => {

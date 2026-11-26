@@ -105,7 +105,7 @@ function Directory({
             aria-expanded={entry.directory ? expanded.has(entry.path) : undefined}
             aria-selected={selected === entry.path}
             className={`tree-entry ${selected === entry.path ? 'selected' : ''}`}
-            style={{ paddingLeft: 12 + depth * 15 }}
+            style={{ paddingLeft: `calc(var(--space-lg) + ${depth} * var(--tree-indent))` }}
             onClick={() =>
               entry.directory
                 ? onToggle(entry.path)

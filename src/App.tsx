@@ -1,3 +1,11 @@
+import EditorPreferencesPanel from './components/preferences/EditorPreferences.tsx';
+import EditorStatus from './components/EditorStatus.tsx';
+import { ChoicePicker } from './components/ChoicePicker.tsx';
+import EditPreview from './components/EditPreview.tsx';
+import { applyTextEdits, projectPath, globMatches, type ProposedFileEdit, type TextEdit } from './editorEdits.ts';
+import { loadEditorConfig, normalizeSavedText } from './editorConfig.ts';
+import { defaultEditorPreferences, readEditorPreferences, type EditorPreferences } from './editorPreferences.ts';
+import { draftSnapshot, restoreDraft, savedSnapshot, type FileDraft } from './editorPersistence.ts';
 import { Button, TextArea, TextInput } from './components/ui/Controls.tsx';
 import ChecksDialog from './components/checks/ChecksDialog.tsx';
 import ChecksStatusButton from './components/checks/ChecksStatusButton.tsx';
@@ -9,7 +17,7 @@ import PreferencesDialog from './components/preferences/PreferencesDialog.tsx';
 import { applyTheme, readTheme, type Theme } from './theme.ts';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { desktop, getActiveWorkspace, openWorkspace, startupProject, request, subscribe } from './api.ts';
-import { languageFor } from './domain.ts';
+import { languageFor, languageExtensions } from './domain.ts';
 import type {
   Activity,
   GitStatus,
@@ -104,6 +112,7 @@ export default function App() {
   tabsRef.current = tabs;
   const [active, setActive] = useState('');
   const [line, setLine] = useState<number>();
+  const [column, setColumn] = useState<number>();
   const [revealRequest, setRevealRequest] = useState(0);
   const [diff, setDiff] = useState<{
     path: string;
@@ -121,6 +130,7 @@ export default function App() {
   // Code is secondary: a right-hand panel opened on demand (file, diff, agent request).
   const [defaultAgent, setDefaultAgent] = useState<AgentProvider>(readDefaultAgent);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [preferencesSection, setPreferencesSection] = useState<'general' | 'editor'>('general');
   const [checksOpen, setChecksOpen] = useState(false);
   const layoutRef = useRef<HTMLElement>(null);
   const centralRef = useRef<HTMLElement>(null);
@@ -151,8 +161,61 @@ export default function App() {
   const [terminals, setTerminals] = useState<TerminalTab[]>([]);
   const [terminalKey, setTerminalKey] = useState('');
   const [toast, setToast] = useState('');
+  const [autoSave, setAutoSave] = useState(true);
+  const autoSaveRef = useRef(autoSave); autoSaveRef.current = autoSave;
+  const [editorPreferences, setEditorPreferences] = useState<EditorPreferences>(defaultEditorPreferences);
+  const [splitFile, setSplitFile] = useState('');
+  const [pinnedFiles, setPinnedFiles] = useState<string[]>([]);
+  useEffect(() => {
+    if (workspace) setEditorPreferences(readEditorPreferences(workspace.id));
+    const saved = workspace ? readProjectSession(workspace.id).editor : undefined;
+    setSplitFile(saved?.splitFile ?? ''); setPinnedFiles(saved?.pinnedFiles ?? []);
+  }, [workspace?.id]);
+  const [editorPreferenceError, setEditorPreferenceError] = useState('');
+  function updateEditorPreferences(patch: Partial<EditorPreferences>) {
+    const next = { ...editorPreferences, ...patch };
+    try {
+      if (workspace) localStorage.setItem(`galeata:editor-preferences:${workspace.id}`, JSON.stringify(next));
+      setEditorPreferences(next); setEditorPreferenceError(''); return true;
+    } catch { setEditorPreferenceError('Impossible d’enregistrer ces réglages. Libérez de l’espace et réessayez.'); return false; }
+  }
+  function updateAutoSave(enabled: boolean) {
+    try {
+      if (workspace) localStorage.setItem(`galeata:autosave:${workspace.id}`, String(enabled));
+      setAutoSave(enabled); setEditorPreferenceError(''); return true;
+    } catch { setEditorPreferenceError('Impossible d’enregistrer le mode de sauvegarde.'); return false; }
+  }
+  function openEditorPreferences() { setPreferencesSection('editor'); setPreferencesOpen(true); }
+
+
+  const [editorReady, setEditorReady] = useState(false);
+  const orphanDrafts = useRef<FileDraft[]>([]);
+  const [saveStates, setSaveStates] = useState<Record<string, 'saving' | 'error' | undefined>>({});
+  const [draftError, setDraftError] = useState('');
+  const [persistedDrafts, setPersistedDrafts] = useState<Record<string, string>>({});
+  const [languageInfo, setLanguageInfo] = useState<Record<string, string>>({});
+  useEffect(() => {
+    const listener = (event: Event) => { const detail = (event as CustomEvent<{ language: string; message: string }>).detail; setLanguageInfo(previous => ({ ...previous, [detail.language]: detail.message })); };
+    window.addEventListener('galeata:language-info', listener);
+    return () => window.removeEventListener('galeata:language-info', listener);
+  }, []);
+  useEffect(() => {
+    const listener = (event: Event) => setToast((event as CustomEvent<string>).detail);
+    window.addEventListener('galeata:language-status', listener);
+    return () => window.removeEventListener('galeata:language-status', listener);
+  }, []);
+  const pendingSaves = useRef(new Map<string, Promise<void>>());
+  const failedSaves = useRef(new Map<string, string>());
+
   const [busy, setBusy] = useState('');
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
+  const [editPreview, setEditPreview] = useState<{ title: string; files: ProposedFileEdit[]; workspaceId: string } | null>(null);
+  const [symbols, setSymbols] = useState<{ name: string; path: string; line: number }[]>([]);
+  const symbolSearch = useRef<((query: string) => Promise<typeof symbols>) | null>(null);
+  const [symbolVisible, setSymbolVisible] = useState(false);
+  const codeHistory = useRef<{ path: string; line?: number; column?: number }[]>([]);
+  const navigationIndex = useRef(-1);
+  const navigating = useRef(false);
   const [query, setQuery] = useState('');
   const [fileSearchVisible, setFileSearchVisible] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -211,9 +274,16 @@ export default function App() {
   }, [error]);
 
   const openFile = useCallback(
-    async (path: string, targetLine?: number, reveal = true) => {
+    async (path: string, targetLine?: number, reveal = true, targetColumn?: number) => {
+      if (!navigating.current) {
+        const last = codeHistory.current[navigationIndex.current];
+        if (!last || last.path !== path || last.line !== targetLine) {
+          codeHistory.current = [...codeHistory.current.slice(0, navigationIndex.current + 1), { path, line: targetLine, column: targetColumn }].slice(-100);
+          navigationIndex.current = codeHistory.current.length - 1;
+        }
+      }
       setDiff(null);
-      setLine(targetLine);
+      setLine(targetLine); setColumn(targetColumn);
       setRevealRequest(value => value + 1);
       if (reveal) { setPanel('files'); mascot.react('file-opened'); }
       if (tabsRef.current.some((file) => file.path === path)) {
@@ -226,17 +296,17 @@ export default function App() {
           path,
         });
         if (getActiveWorkspace()?.id !== expected) return;
+        let recovered: FileDraft[] = [];
+        try { const value = JSON.parse(localStorage.getItem(`galeata:file-drafts:${expected}`) ?? '[]'); if (Array.isArray(value)) recovered = value.filter(item => typeof item?.path === 'string' && typeof item?.content === 'string' && typeof item?.stamp === 'string'); } catch { /* Optional recovery. */ }
+        orphanDrafts.current = orphanDrafts.current.filter(draft => draft.path !== path);
+        const association = expected ? readProjectSession(expected).editor?.languages?.[path] : undefined;
         setTabs((previous) =>
           previous.some((file) => file.path === path)
             ? previous
             : [
                 ...previous,
                 {
-                  path,
-                  content: result.content,
-                  savedContent: result.content,
-                  stamp: result.stamp,
-                  language: languageFor(path),
+                  ...restoreDraft({ path, content: result.content, savedContent: result.content, stamp: result.stamp, language: association && languageExtensions[association] ? association : languageFor(path, result.content) }, recovered),
                 },
               ],
         );
@@ -247,6 +317,129 @@ export default function App() {
     },
     [error],
   );
+
+  function navigateCode(direction: number) {
+    const index = navigationIndex.current + direction;
+    const target = codeHistory.current[index];
+    if (!target) return;
+    navigationIndex.current = index; navigating.current = true;
+    void openFile(target.path, target.line, true, target.column).finally(() => { navigating.current = false; });
+  }
+  async function proposeWorkspaceEdit(title: string, edit: { changes?: Record<string, TextEdit[]>; documentChanges?: { textDocument?: { uri: string }; edits?: TextEdit[]; kind?: string }[]; _galeataStamps?: Record<string, string> }, snapshots: Record<string, string> = {}) {
+    const expected = getActiveWorkspace();
+    if (!expected) return;
+    await Promise.allSettled([...pendingSaves.current.values()]);
+    const grouped = new Map<string, TextEdit[]>();
+    for (const [uri, changes] of Object.entries(edit.changes ?? {})) grouped.set(projectPath(uri, expected.root), changes);
+    for (const change of edit.documentChanges ?? []) {
+      if (change.kind || !change.textDocument || !change.edits) throw new Error('Cette action contient une opération de fichier non prise en charge.');
+      const path = projectPath(change.textDocument.uri, expected.root);
+      grouped.set(path, [...(grouped.get(path) ?? []), ...change.edits]);
+    }
+    if (grouped.size > 100) throw new Error('Limite de 100 fichiers par aperçu.');
+    const files: ProposedFileEdit[] = [];
+    let size = 0;
+    for (const [path, edits] of grouped) {
+      const disk = await request<{ content: string; stamp: string }>('workspace.read', { path });
+      const tab = tabsRef.current.find(file => file.path === path);
+      if (tab?.external || (tab && tab.stamp !== disk.stamp)) throw new Error(`Le fichier ${path} a changé sur disque.`);
+      const before = tab?.content ?? disk.content;
+      if (snapshots[path] !== undefined && snapshots[path] !== before) throw new Error(`${path} a changé pendant la préparation des changements.`);
+      const sourceStamp = Object.entries(edit._galeataStamps ?? {}).find(([uri]) => projectPath(uri, expected.root) === path)?.[1];
+      if (sourceStamp && sourceStamp !== disk.stamp) throw new Error(`${path} a changé depuis la réponse du serveur.`);
+      const after = applyTextEdits(before, edits);
+      size += before.length + after.length;
+      if (size > 8 * 1024 * 1024) throw new Error('Aperçu trop volumineux.');
+      if (before !== after) files.push({ path, before, after, stamp: disk.stamp });
+    }
+    if (getActiveWorkspace()?.id !== expected.id) return;
+    if (!files.length) { setToast('Aucun changement à appliquer.'); return; }
+    setEditPreview({ title, files, workspaceId: expected.id });
+  }
+  async function applyProposedEdits(files: ProposedFileEdit[]) {
+    if (!editPreview || getActiveWorkspace()?.id !== editPreview.workspaceId) throw new Error('Le projet a changé.');
+    const expected = editPreview.workspaceId;
+    const editor = await import('./components/EditorSurface.tsx');
+    if (getActiveWorkspace()?.id !== expected) throw new Error('Le projet a changé.');
+    const disks = await Promise.all(files.map(file => request<{ content: string; stamp: string }>('workspace.read', { path: file.path })));
+    if (getActiveWorkspace()?.id !== expected) throw new Error('Le projet a changé.');
+    for (let index = 0; index < files.length; index++) {
+      const file = files[index], disk = disks[index];
+      const current = tabsRef.current.find(tab => tab.path === file.path);
+      if (disk.stamp !== file.stamp || (current?.content ?? disk.content) !== file.before)
+        throw new Error(`${file.path} a changé depuis l’aperçu. Recommencez l’action.`);
+    }
+    const next = [...tabsRef.current];
+    files.forEach((file, index) => {
+      const at = next.findIndex(tab => tab.path === file.path);
+      const updated = { path: file.path, content: file.after, savedContent: disks[index].content, stamp: file.stamp, language: languageFor(file.path, file.after) };
+      if (at >= 0) next[at] = { ...next[at], content: file.after }; else next.push(updated);
+    });
+    editor.applyFileChanges(expected, getActiveWorkspace()!.root, files);
+    tabsRef.current = next; setTabs(next);
+  }
+  async function previewReplacement(query: string, replacement: string, include: string, exclude: string) {
+    const expected = getActiveWorkspace()?.id;
+    if (!expected || !query) return;
+    await Promise.allSettled([...pendingSaves.current.values()]);
+    const paths = new Set(tabsRef.current.filter(file => file.content.includes(query)).map(file => file.path));
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page: { items: SearchHit[]; nextOffset: number | null } = await request('workspace.search_text', { query, offset });
+      page.items.forEach(hit => paths.add(hit.path));
+      offset = page.nextOffset;
+      if (offset !== null && offset > 10000) throw new Error('Trop de résultats : précisez la recherche.');
+      if (getActiveWorkspace()?.id !== expected) return;
+    }
+    const patterns = (value: string) => value.split(';').map(pattern => pattern.trim()).filter(Boolean);
+    const includes = patterns(include), excludes = patterns(exclude);
+    const files: ProposedFileEdit[] = [];
+    let size = 0;
+    for (const path of paths) {
+      if ((includes.length && !includes.some(pattern => globMatches(path, pattern))) || excludes.some(pattern => globMatches(path, pattern))) continue;
+      const disk = await request<{ content: string; stamp: string }>('workspace.read', { path });
+      const tab = tabsRef.current.find(file => file.path === path);
+      if (tab?.external || (tab && tab.stamp !== disk.stamp)) throw new Error(`${path} a changé sur disque.`);
+      const before = tab?.content ?? disk.content, after = before.split(query).join(replacement);
+      size += before.length + after.length;
+      if (files.length >= 100 || size > 8 * 1024 * 1024) throw new Error('Remplacement trop volumineux : précisez les filtres.');
+      if (before !== after) files.push({ path, before, after, stamp: disk.stamp });
+    }
+    if (getActiveWorkspace()?.id !== expected) return;
+    if (files.length) setEditPreview({ title: 'Remplacer dans le projet', files, workspaceId: expected });
+    else setToast('Aucun changement dans les fichiers sélectionnés.');
+  }
+  useEffect(() => {
+    const edit = (event: Event) => {
+      const detail = (event as CustomEvent<{ title: string; edit: Parameters<typeof proposeWorkspaceEdit>[1]; snapshots?: Record<string, string> }>).detail;
+      void proposeWorkspaceEdit(detail.title, detail.edit, detail.snapshots).catch(error);
+    };
+    const structure = (event: Event) => { symbolSearch.current = null; setSymbols((event as CustomEvent<typeof symbols>).detail); setSymbolVisible(true); setPaletteQuery(''); setPalette(true); };
+    const cursor = (event: Event) => {
+      const detail = (event as CustomEvent<{ path: string; line: number; column: number }>).detail;
+      const current = codeHistory.current[navigationIndex.current];
+      if (current?.path === detail.path) { current.line = detail.line; current.column = detail.column; }
+    };
+    const keys = (event: KeyboardEvent) => {
+      if (event.altKey && ['ArrowLeft','ArrowRight'].includes(event.key)) { event.preventDefault(); navigateCode(event.key === 'ArrowLeft' ? -1 : 1); }
+    };
+    const querySymbols = (event: Event) => {
+      const search = (event as CustomEvent<(query: string) => Promise<typeof symbols>>).detail;
+      symbolSearch.current = search; setSymbols([]); setSymbolVisible(true); setPaletteQuery(''); setPalette(true);
+    };
+    const codeActions = (event: Event) => {
+      const detail = (event as CustomEvent<{ actions: { title: string }[]; apply: (index: number) => Promise<void> }>).detail;
+      if (!detail.actions.length) { setToast('Aucune correction proposée pour cette sélection.'); return; }
+      setDialog({ title: 'Choisir une correction', fields: [{ name: 'action', label: 'Correction', options: detail.actions.map((action, index) => ({ value: String(index), label: action.title })) }], submit: 'Voir les changements', onSubmit: async values => detail.apply(Number(values.action)) });
+    };
+    window.addEventListener('galeata:cursor-position', cursor);
+    window.addEventListener('galeata:query-symbols', querySymbols);
+    window.addEventListener('galeata:code-action-choices', codeActions);
+    window.addEventListener('galeata:workspace-edit', edit);
+    window.addEventListener('galeata:symbols', structure);
+    window.addEventListener('keydown', keys);
+    return () => { window.removeEventListener('galeata:cursor-position', cursor); window.removeEventListener('galeata:query-symbols', querySymbols); window.removeEventListener('galeata:code-action-choices', codeActions); window.removeEventListener('galeata:workspace-edit', edit); window.removeEventListener('galeata:symbols', structure); window.removeEventListener('keydown', keys); };
+  });
 
   const showDiff = useCallback(
     async (path: string, staged = false) => {
@@ -294,10 +487,18 @@ export default function App() {
 
   const chooseWorkspace = useCallback(
     async (path?: string) => {
+      if (getActiveWorkspace()) {
+        try {
+          localStorage.setItem(`galeata:file-drafts:${getActiveWorkspace()!.id}`, JSON.stringify(
+            [...orphanDrafts.current, ...draftSnapshot(tabsRef.current)]));
+        } catch (e) { error(e); return; }
+      }
+      setEditorReady(false);
       setBusy('Ouverture du projet…');
       try {
         const result = await openWorkspace(path);
-        if (!result) return;
+        if (!result) { setEditorReady(true); return; }
+        codeHistory.current = []; navigationIndex.current = -1; setSymbols([]); setSymbolVisible(false); setEditPreview(null);
         setTabs([]);
         setActive('');
         setDiff(null);
@@ -313,13 +514,24 @@ export default function App() {
         const saved = readProjectSession(result.id).editor;
         const legacy = saved ? null : await request<{ openFiles?: string[]; activeFile?: string } | null>('preferences.get');
         const paths = saved?.openFiles ?? legacy?.openFiles ?? (!desktop ? ['README.md'] : []);
+        let drafts: { path: string; content: string; stamp: string }[] = [];
+        try {
+          const value = JSON.parse(localStorage.getItem(`galeata:file-drafts:${result.id}`) ?? '[]');
+          if (Array.isArray(value)) drafts = value.filter(item => typeof item?.path === 'string' && typeof item?.content === 'string' && typeof item?.stamp === 'string');
+        } catch { /* A corrupt draft must not prevent opening the project. */ }
+        orphanDrafts.current = [];
         const restored: OpenFile[] = [];
-        if (Array.isArray(paths)) for (const path of paths) {
+        if (Array.isArray(paths)) for (const path of new Set([...paths, ...drafts.map(draft => draft.path)])) {
           if (typeof path !== 'string') continue;
           try {
             const file = await request<{ content: string; stamp: string }>('workspace.read', { path });
-            restored.push({ path, content: file.content, savedContent: file.content, stamp: file.stamp, language: languageFor(path) });
-          } catch (e) { error(e); }
+            restored.push(restoreDraft({ path, content: file.content, savedContent: file.content,
+              stamp: file.stamp, language: saved?.languages?.[path] && languageExtensions[saved.languages[path]] ? saved.languages[path] : languageFor(path, file.content) }, drafts));
+          } catch (e) {
+            const draft = drafts.find(draft => draft.path === path);
+            if (draft) orphanDrafts.current.push(draft);
+            error(e);
+          }
         }
         setTabs(restored);
         const selected = saved?.activeFile ?? legacy?.activeFile;
@@ -336,6 +548,7 @@ export default function App() {
         }
         await restoreProjectConversations(result.id, error);
         setWorkspace(result);
+        setEditorReady(true);
       } catch (e) {
         error(e);
       } finally {
@@ -352,7 +565,7 @@ export default function App() {
   }, []);
 
   function openPreferences() {
-    setPreferencesOpen(true);
+    setPreferencesSection('general'); setPreferencesOpen(true);
   }
 
   function openFolder() {
@@ -375,7 +588,7 @@ export default function App() {
   }, [bottomVisible]);
   const layoutSnapshot = useRef<{ id: string; editor: EditorLayout } | null>(null);
   layoutSnapshot.current = workspace ? { id: workspace.id, editor: {
-    openFiles: tabs.map(file => file.path), activeFile: active, panel,
+    openFiles: tabs.map(file => file.path), activeFile: active, panel, splitFile, pinnedFiles, languages: Object.fromEntries(tabs.map(file => [file.path, file.language])),
     planVisible, bottomVisible, bottom, query, fileSearchVisible,
     diff: diff ? { path: diff.path, staged: diff.staged } : undefined,
     sidebarWidth, planWidth, bottomHeight,
@@ -398,7 +611,7 @@ export default function App() {
     }, 400);
     return () => clearTimeout(timer);
   }, [workspace, tabs, active, panel, planVisible, bottomVisible, bottom,
-    sidebarWidth, planWidth, bottomHeight, query, fileSearchVisible, diff, error]);
+    sidebarWidth, planWidth, bottomHeight, query, fileSearchVisible, diff, splitFile, pinnedFiles, error]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -496,28 +709,105 @@ export default function App() {
     };
   }, [workspace, active, treeRevision]);
 
-  async function saveFile(path: string) {
-    const file = tabsRef.current.find((file) => file.path === path);
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('galeata:open-models', {
+      detail: tabs.map(file => `${workspace?.id}:${file.path}`),
+    }));
+  }, [tabs, workspace?.id]);
+  async function saveFile(path: string, automatic = false): Promise<void> {
+    if (!desktop) return;
+    const workspaceId = getActiveWorkspace()?.id;
+    if (!workspaceId || workspaceId !== workspace?.id) return;
+    const key = `${workspaceId}:${path}`;
+    const pending = pendingSaves.current.get(key);
+    if (pending) { await pending; return saveFile(path, automatic); }
+    let file = tabsRef.current.find(file => file.path === path);
     if (!file || file.content === file.savedContent) return;
-    try {
-      const result = await request<{ stamp: string }>('workspace.write', {
-        path,
-        content: file.content,
-        stamp: file.stamp,
-      });
-      setTabs((previous) =>
-        previous.map((current) =>
-          current.path === path
-            ? { ...current, stamp: result.stamp, savedContent: file.content, external: false }
-            : current,
-        ),
-      );
-      await refresh();
-    } catch (e) {
-      error(e);
-      throw e;
-    }
+    if (file.external) throw new Error('Comparez ou rechargez le fichier avant de l’enregistrer.');
+    let retry = false;
+    const operation = (async () => {
+      setSaveStates(previous => ({ ...previous, [key]: 'saving' }));
+      try {
+        const snapshot = file!;
+        let content = snapshot.content;
+        if (editorPreferences.formatOnSave) {
+          const editor = await import('./components/EditorSurface.tsx');
+          content = await editor.formatOpenFile(key, content, snapshot, workspace!.root, editorPreferences);
+        }
+        const config = desktop ? await loadEditorConfig(path, async relative => (await request<{ content: string }>('workspace.read', { path: relative })).content) : {};
+        content = normalizeSavedText(content, config);
+        if (getActiveWorkspace()?.id !== workspaceId) throw new Error('Le projet a changé pendant l’enregistrement.');
+        const latest = tabsRef.current.find(current => current.path === path);
+        if (latest?.external) throw new Error('Le fichier a changé sur disque : comparez les versions avant d’enregistrer.');
+        if (!latest) return;
+        if (latest.content !== snapshot.content || latest.stamp !== snapshot.stamp) { retry = true; return; }
+        if (content !== snapshot.content) {
+          const editor = await import('./components/EditorSurface.tsx');
+          if (getActiveWorkspace()?.id !== workspaceId) throw new Error('Le projet a changé pendant l’enregistrement.');
+          const current = tabsRef.current.find(file => file.path === path);
+          if (!current || current.content !== snapshot.content || current.stamp !== snapshot.stamp || current.external) { retry = true; return; }
+          editor.applyFileChanges(workspaceId, workspace!.root, [{ path, before: snapshot.content, after: content }]);
+          tabsRef.current = tabsRef.current.map(current => current.path === path ? { ...current, content } : current);
+          setTabs(previous => previous.map(current => current.path === path ? { ...current, content } : current));
+        }
+        file = { ...snapshot, content };
+        const result = await request<{ stamp: string }>('workspace.write', {
+          path, content, stamp: snapshot.stamp,
+        });
+        if (getActiveWorkspace()?.id !== workspaceId) return;
+        tabsRef.current = tabsRef.current.map(current => current.path === path
+          ? savedSnapshot(current, content, result.stamp) : current);
+        setTabs(previous => previous.map(current => current.path === path
+          ? savedSnapshot(current, content, result.stamp) : current));
+        failedSaves.current.delete(key);
+        setSaveStates(previous => ({ ...previous, [key]: undefined }));
+      } catch (e) {
+        failedSaves.current.set(key, file.content);
+        if (getActiveWorkspace()?.id === workspaceId) {
+          setSaveStates(previous => ({ ...previous, [key]: 'error' }));
+          error(e);
+        }
+        throw e;
+      } finally {
+        setSaveStates(previous => previous[key] === 'saving' ? { ...previous, [key]: undefined } : previous);
+      }
+    })();
+    pendingSaves.current.set(key, operation);
+    try { await operation; } finally { pendingSaves.current.delete(key); }
+    if (retry && (!automatic || autoSaveRef.current)) return saveFile(path, automatic);
   }
+  useEffect(() => {
+    setSaveStates({}); setPersistedDrafts({}); setDraftError(''); setEditorPreferenceError('');
+    if (!workspace) return;
+    try { setAutoSave(localStorage.getItem(`galeata:autosave:${workspace.id}`) !== 'false'); }
+    catch { setAutoSave(true); }
+  }, [workspace?.id]);
+  useEffect(() => {
+    if (!workspace || !editorReady || getActiveWorkspace()?.id !== workspace.id) return;
+    const flush = () => {
+      try {
+        localStorage.setItem(`galeata:file-drafts:${workspace.id}`, JSON.stringify(
+          [...orphanDrafts.current, ...draftSnapshot(tabs)]));
+        setPersistedDrafts(Object.fromEntries(tabs.filter(file => file.content !== file.savedContent).map(file => [file.path, file.content])));
+        setDraftError('');
+      } catch { setDraftError('Le brouillon local n’a pas pu être conservé.'); }
+    };
+    const timer = setTimeout(flush, 300);
+    window.addEventListener('pagehide', flush);
+    return () => { clearTimeout(timer); window.removeEventListener('pagehide', flush); };
+  }, [tabs, workspace?.id, editorReady]);
+  useEffect(() => {
+    if (!desktop || !workspace || !autoSave || !editorReady || editPreview) return;
+    const timer = setTimeout(() => {
+      for (const file of tabsRef.current) {
+        const key = `${workspace.id}:${file.path}`;
+        if (!file.external && file.content !== file.savedContent
+          && failedSaves.current.get(key) !== file.content)
+          void saveFile(file.path, true).catch(() => {});
+      }
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [tabs, autoSave, workspace?.id, editorReady, editPreview]);
   function removeTab(path: string) {
     setTabs((previous) => previous.filter((file) => file.path !== path));
     if (active === path) setActive(tabs.find((file) => file.path !== path)?.path ?? '');
@@ -803,7 +1093,15 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (!palette || !paletteQuery.trim() || !workspace) {
+    if (palette && symbolVisible && symbolSearch.current) {
+      const search = symbolSearch.current;
+      let cancelled = false;
+      setSymbols([]);
+      if (!paletteQuery.trim()) return;
+      const timer = setTimeout(() => { void search(paletteQuery.trim()).then(symbols => { if (!cancelled) setSymbols(symbols.slice(0, 100)); }).catch(value => { if (!cancelled) error(value); }); }, 200);
+      return () => { cancelled = true; clearTimeout(timer); };
+    }
+    if (!palette || symbolVisible || !paletteQuery.trim() || !workspace) {
       setPaletteHits([]);
       return;
     }
@@ -820,7 +1118,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [palette, paletteQuery, workspace, error]);
+  }, [palette, symbolVisible, paletteQuery, workspace, error]);
   useEffect(() => {
     const searchShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
@@ -829,7 +1127,7 @@ export default function App() {
       }
       if (event.key.toLowerCase() === 'p') {
         event.preventDefault(); event.stopPropagation();
-        setPalette((value) => !value);
+        setSymbolVisible(false); setPaletteQuery(''); setPalette((value) => !value);
       }
     };
     const handler = (event: KeyboardEvent) => {
@@ -948,7 +1246,7 @@ export default function App() {
     <>
       <div className="editor-tabs">
         <div className="tab-list" role="tablist" aria-label="Fichiers ouverts">
-          {(reviewing ? [] : tabs).map((file) => (
+          {(reviewing ? [] : [...tabs].sort((a,b) => Number(pinnedFiles.includes(b.path)) - Number(pinnedFiles.includes(a.path)))).map((file) => (
             <div
               key={file.path}
               className={`editor-tab ${active === file.path && !diff ? 'active' : ''}`}
@@ -967,6 +1265,7 @@ export default function App() {
                   <Icon name={/\.(tsx?|rs|json|css|html)$/.test(file.path) ? "file-code" : "files"} size={14} />
                 </span>
                 {file.path.split('/').pop()}
+                {pinnedFiles.includes(file.path) ? " · épinglé" : ""}
                 {file.content !== file.savedContent ? <span className="dirty-dot" /> : null}
               </Button>
               <Button
@@ -997,32 +1296,27 @@ export default function App() {
           {!tabs.length && !diff ? <span className="empty-tab">Bienvenue dans Galeata</span> : null}
         </div>
         <div className="editor-tab-actions">
+          <ChoicePicker actionMenu className="editor-file-actions" label="Actions du fichier" fallback="Fichier" options={[
+            { id: 'split', label: 'Afficher ce fichier à côté' },
+            ...(splitFile ? [{ id: 'close-split', label: 'Fermer la deuxième vue' }] : []),
+            { id: 'pin', label: pinnedFiles.includes(active) ? 'Désépingler le fichier' : 'Épingler le fichier' },
+            { id: 'rename', label: 'Renommer le fichier' },
+            { id: 'delete', label: 'Supprimer le fichier', danger: true },
+          ]} disabled={!activeFile || !!diff} onChange={action => {
+            if (action === 'split') setSplitFile(active);
+            else if (action === 'close-split') setSplitFile('');
+            else if (action === 'pin') setPinnedFiles(files => files.includes(active) ? files.filter(path => path !== active) : [...files, active]);
+            else fileAction(action as 'rename' | 'delete');
+          }} />
+          <Button variant="icon" title="Préférences de l’éditeur" aria-label="Préférences de l’éditeur" onClick={openEditorPreferences}><Icon name="settings" size={14} /></Button>
           <Button
             variant="icon"
             title="Enregistrer le fichier"
             aria-label="Enregistrer le fichier"
-            disabled={!activeFile || (!!diff && !editorDiff?.editable)}
+            disabled={!desktop || !activeFile || (!!diff && !editorDiff?.editable)}
             onClick={() => void saveFile(active).catch(() => {})}
           >
             <Icon name="save" size={14} />
-          </Button>
-          <Button
-            variant="icon"
-            title="Renommer le fichier"
-            aria-label="Renommer le fichier"
-            disabled={!activeFile}
-            onClick={() => fileAction('rename')}
-          >
-            <Icon name="edit" size={14} />
-          </Button>
-          <Button
-            variant="icon"
-            title="Supprimer le fichier"
-            aria-label="Supprimer le fichier"
-            disabled={!activeFile}
-            onClick={() => fileAction('delete')}
-          >
-            <Icon name="trash" size={14} />
           </Button>
         </div>
       </div>
@@ -1037,12 +1331,20 @@ export default function App() {
                 {part}
               </span>
             ))}
-            <span className="editor-language">{displayFile.language}</span>
+
           </div>
           {activeFile?.external && !diff ? (
             <div className="conflict-banner">
               <Icon name="warning" size={15} />
               <span>Ce fichier a changé sur disque. Vos modifications sont conservées.</span>
+              <Button className="text-button" onClick={() => {
+                const expected = workspace?.id;
+                void Promise.resolve(pendingSaves.current.get(`${expected}:${active}`)).catch(() => {}).then(() => request<{ content: string; stamp: string }>('workspace.read', { path: active })).then(disk => {
+                  if (getActiveWorkspace()?.id !== expected) return;
+                  failedSaves.current.delete(`${expected}:${active}`);
+                  setTabs(files => files.map(file => file.path === active ? { ...file, savedContent: disk.content, stamp: disk.stamp, external: false } : file));
+                }).catch(error);
+              }}>Conserver mes changements</Button>
               <Button
                 className="text-button"
                 onClick={() => {
@@ -1098,15 +1400,21 @@ export default function App() {
               </Button>
             </div>
           ) : null}
+          <div className="editor-split">
           <Suspense fallback={<div className="loading-editor">Préparation de l’éditeur…</div>}>
             <EditorSurface
               key={`${workspace?.id}:${displayFile.path}:${diff ? 'diff' : 'edit'}:${diff?.original ?? ''}`}
+              preferences={editorPreferences}
+              projectRoot={workspace?.root ?? ""}
+              onOpen={(path, line, column) => void openFile(path, line, true, column)}
+              modelKey={`${workspace?.id}:${displayFile.path}`}
               file={displayFile}
               diff={editorDiff}
               line={line}
+              column={column}
               revealRequest={revealRequest}
               onChange={(content) => {
-                mascot.react('text-edit');
+                            mascot.react('text-edit');
                 setTabs((previous) =>
                   previous.map((file) => (file.path === active ? { ...file, content } : file)),
                 );
@@ -1114,6 +1422,18 @@ export default function App() {
               onSave={() => void saveFile(active).catch(() => {})}
             />
           </Suspense>
+          {!diff && splitFile && tabs.find(file => file.path === splitFile) ? <Suspense fallback={null}>
+            <EditorSurface key={`${workspace?.id}:${splitFile}:second`} modelKey={`${workspace?.id}:${splitFile}`}
+              projectRoot={workspace?.root ?? ''} preferences={editorPreferences}
+              onOpen={(path, line, column) => void openFile(path, line, true, column)} file={tabs.find(file => file.path === splitFile)!}
+              onChange={content => { setTabs(files => files.map(file => file.path === splitFile ? { ...file, content } : file)); }}
+              onSave={() => void saveFile(splitFile).catch(() => {})} />
+          </Suspense> : null}
+          </div>
+          <EditorStatus file={displayFile} editable={!diff || !!editorDiff?.editable} native={desktop} autoSave={autoSave}
+            phase={saveStates[`${workspace?.id}:${displayFile.path}`] === 'error' && failedSaves.current.get(`${workspace?.id}:${displayFile.path}`) !== displayFile.content ? undefined : saveStates[`${workspace?.id}:${displayFile.path}`]} localDraftSaved={persistedDrafts[displayFile.path] === displayFile.content} draftError={draftError}
+            onPreferences={openEditorPreferences} onRetry={() => void saveFile(displayFile.path).catch(() => {})}
+            onLanguage={language => setTabs(files => files.map(file => file.path === displayFile.path ? { ...file, language } : file))} />
         </>
       ) : (
         <div className="code-empty">
@@ -1151,7 +1471,7 @@ export default function App() {
           <span>{workspace?.name ?? 'Ouvrir un projet'}</span>
           <Icon name="chevron" size={12} className="rotated" />
         </Button>
-        <Button className="command-trigger" onClick={() => setPalette(true)}>
+        <Button className="command-trigger" onClick={() => { setSymbolVisible(false); setPaletteQuery(''); setPalette(true); }}>
           <Icon name="search" size={14} />
           <span>Rechercher un fichier ou une action…</span>
           <kbd>Ctrl P</kbd>
@@ -1269,11 +1589,12 @@ export default function App() {
                   </div>
                   <div className="file-tools" role="group" aria-label="Outils des fichiers">
                     <Button className="text-button" aria-pressed={!fileSearchVisible} onClick={() => setFileSearchVisible(false)}><Icon name="folder" size={14} /> Arborescence</Button>
-                    <Button className="text-button" aria-pressed={fileSearchVisible} title="Chercher dans le contenu (Ctrl+Shift+F)" onClick={openProjectSearch}><Icon name="search" size={14} /> Contenu</Button>
+                    <Button className="text-button" aria-pressed={fileSearchVisible} title="Rechercher dans les fichiers (Ctrl+Shift+F)" onClick={openProjectSearch}><Icon name="search" size={14} /> Rechercher</Button>
                   </div>
-                  {fileSearchVisible ? <FileSearch query={query} hits={hits} searching={searching}
+                  <div className="file-search-panel" hidden={!fileSearchVisible}><FileSearch query={query} hits={hits} searching={searching}
+                    onReplace={(query, replacement, include, exclude) => void previewReplacement(query, replacement, include, exclude).catch(error)}
                     hasMore={searchNext !== null} onQuery={setQuery}
-                    onOpen={hit => void openFile(hit.path, hit.line || undefined, false)} onMore={() => void loadMoreSearch()} /> : null}
+                    onOpen={hit => void openFile(hit.path, hit.line || undefined, false)} onMore={() => void loadMoreSearch()} /></div>
                   <div hidden={fileSearchVisible}>
                   <FileTree key={workspace.id}
                     workspaceId={workspace.id}
@@ -1460,7 +1781,7 @@ export default function App() {
           {filesPage ? (
             <section className="review-area files-area" aria-label="Fichiers du projet">
               {activeFile ? codeArea : <FilesHome workspace={workspace} git={git}
-                onFind={() => { setPaletteQuery(''); setPalette(true); }}
+                onFind={() => { setSymbolVisible(false); setPaletteQuery(''); setPalette(true); }}
                 onCreate={() => fileAction('create')} onOpen={(path) => void openFile(path)} />}
             </section>
           ) : null}
@@ -1709,7 +2030,7 @@ export default function App() {
       </main>
       {checksOpen && workspace ? <ChecksDialog key={workspace.id} workspaceId={workspace.id}
         dirty={tabs.some(file => file.content !== file.savedContent)} onClose={() => setChecksOpen(false)} /> : null}
-      {preferencesOpen ? <PreferencesDialog theme={theme} defaultAgent={defaultAgent} providers={providers}
+      {preferencesOpen ? <PreferencesDialog initialSection={preferencesSection} editor={workspace ? <EditorPreferencesPanel project={workspace.name} value={editorPreferences} autoSave={autoSave} language={activeFile?.language} languageInfo={activeFile ? languageInfo[activeFile.language] : undefined} error={editorPreferenceError} onChange={updateEditorPreferences} onAutoSave={updateAutoSave} /> : undefined} theme={theme} defaultAgent={defaultAgent} providers={providers}
         onThemeChange={value => { applyTheme(value); setTheme(value); }}
         onAgentChange={value => { writeDefaultAgent(value); setDefaultAgent(value); }}
         onClose={() => setPreferencesOpen(false)} /> : null}
@@ -1740,7 +2061,7 @@ export default function App() {
             {busy ||
               (desktop ? 'Tout reste sur votre machine' : 'Démonstration · fichiers d’exemple')}
           </span>
-          {activeFile ? (
+          {activeFile && panel !== 'files' ? (
             <>
               <span>UTF-8</span>
               <span>{activeFile.language}</span>
@@ -1769,6 +2090,7 @@ export default function App() {
           </Button>
         </div>
       ) : null}
+      {editPreview ? <EditPreview title={editPreview.title} files={editPreview.files} onApply={applyProposedEdits} onClose={() => setEditPreview(null)} /> : null}
       {dialog ? <Dialog key={dialog.title} spec={dialog} onClose={() => setDialog(null)} /> : null}
       {palette ? (
         <div className="palette-backdrop" onClick={() => setPalette(false)}>
@@ -1780,6 +2102,11 @@ export default function App() {
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === 'Escape') setPalette(false);
+              if (event.key === 'Enter' && event.target instanceof HTMLInputElement && symbolVisible) {
+                const symbol = symbols.find(symbol => symbol.name.toLocaleLowerCase().includes(paletteQuery.toLocaleLowerCase()));
+                if (symbol) { event.preventDefault(); void openFile(symbol.path, symbol.line); setPalette(false); }
+                return;
+              }
               if (event.key === 'Enter' && event.target instanceof HTMLInputElement && paletteHits[0]) {
                 event.preventDefault(); navigate('files');
                 void openFile(paletteHits[0].path, undefined, false);
@@ -1792,14 +2119,18 @@ export default function App() {
               <TextInput
                 autoFocus
                 aria-label="Fichier ou action"
-                placeholder="Rechercher un fichier ou choisir une action…"
+                placeholder={symbolVisible ? 'Rechercher un symbole…' : 'Rechercher un fichier ou choisir une action…'}
                 value={paletteQuery}
                 onChange={(event) => setPaletteQuery(event.target.value)}
               />
               <kbd>Esc</kbd>
             </div>
             <div className="palette-results">
-              {paletteQuery ? (
+              {symbolVisible ? (
+                <>{!symbols.length ? <p className="muted">{symbolSearch.current && !paletteQuery.trim() ? 'Rechercher un symbole par son nom…' : 'Aucun symbole disponible.'}</p> : null}{symbols.filter(symbol => symbol.name.toLocaleLowerCase().includes(paletteQuery.toLocaleLowerCase())).map((symbol, index) => <Button key={`${symbol.path}:${symbol.line}:${index}`} onClick={() => { void openFile(symbol.path, symbol.line); setPalette(false); }}>
+                  <Icon name="file-code" size={15} />{symbol.name}<small>{symbol.path}:{symbol.line}</small>
+                </Button>)}</>
+              ) : paletteQuery ? (
                 paletteHits.map((hit) => (
                   <Button
                     key={hit.path}
@@ -1816,6 +2147,10 @@ export default function App() {
                 ))
               ) : (
                 <>
+                  {activeFile ? <>
+                    <Button onClick={() => { setPalette(false); window.dispatchEvent(new CustomEvent('galeata:editor-command', { detail: { command: 'structure', path: active } })); }}>Aller à un symbole dans le fichier · Ctrl+Shift+O</Button>
+                    <Button onClick={() => { setPalette(false); window.dispatchEvent(new CustomEvent('galeata:editor-command', { detail: { command: 'project-symbols', path: active } })); }}>Rechercher un symbole du projet · Ctrl+T</Button>
+                  </> : null}
                   <Button
                     onClick={() => {
                       setPalette(false);

@@ -1,7 +1,8 @@
-import { Text, Button, TextInput } from './ui/Controls.tsx';
-import { useMemo, useState } from 'react';
+import { Button, TextInput } from './ui/Controls.tsx';
+import { useMemo, useRef, useState } from 'react';
 import type { GitStatus, SearchHit, Workspace } from '../types.ts';
 import { Icon } from './Icon.tsx';
+import { globMatches } from '../editorEdits.ts';
 
 export function FilesHome({ workspace, git, onFind, onCreate, onOpen }: {
   workspace: Workspace;
@@ -35,7 +36,7 @@ export function FilesHome({ workspace, git, onFind, onCreate, onOpen }: {
   );
 }
 
-export function FileSearch({ query, hits, searching, hasMore, onQuery, onOpen, onMore }: {
+export function FileSearch({ query, hits, searching, hasMore, onQuery, onOpen, onMore, onReplace }: {
   query: string;
   hits: SearchHit[];
   searching: boolean;
@@ -43,32 +44,70 @@ export function FileSearch({ query, hits, searching, hasMore, onQuery, onOpen, o
   onQuery: (query: string) => void;
   onOpen: (hit: SearchHit) => void;
   onMore: () => void;
+  onReplace: (query: string, replacement: string, include: string, exclude: string) => void;
 }) {
+  const [include, setInclude] = useState('');
+  const [exclude, setExclude] = useState('');
+  const [replacement, setReplacement] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
   const groups = useMemo(() => {
     const result = new Map<string, SearchHit[]>();
+    const included = include.split(';').map(pattern => pattern.trim()).filter(Boolean);
+    const excluded = exclude.split(';').map(pattern => pattern.trim()).filter(Boolean);
     for (const hit of hits) {
+      if ((included.length && !included.some(pattern => globMatches(hit.path, pattern))) || excluded.some(pattern => globMatches(hit.path, pattern))) continue;
       const group = result.get(hit.path);
       if (group) group.push(hit);
       else result.set(hit.path, [hit]);
     }
     return [...result.entries()];
-  }, [hits]);
+  }, [hits, include, exclude]);
   const trimmed = query.trim();
+  const count = groups.reduce((count, [, matches]) => count + matches.length, 0);
+  function highlight(text: string) {
+    if (!trimmed) return text;
+    const parts = []; let cursor = 0;
+    const folded = text.toLocaleLowerCase(), term = trimmed.toLocaleLowerCase();
+    let at = folded.indexOf(term);
+    while (at >= 0) {
+      parts.push(text.slice(cursor, at), <mark key={at}>{text.slice(at, at + trimmed.length)}</mark>);
+      cursor = at + trimmed.length; at = folded.indexOf(term, cursor);
+    }
+    parts.push(text.slice(cursor)); return parts;
+  }
   return (
     <section className="file-content-search" aria-label="Recherche dans les fichiers">
-      <div className="page-search-box"><Icon name="search" size={16} />
-        <TextInput autoFocus id="project-content-search" aria-label="Rechercher dans le contenu" placeholder="Texte dans le projet…" value={query} onChange={event => onQuery(event.target.value)} />
-        {query ? <Button variant="icon" aria-label="Effacer la recherche" onClick={() => onQuery('')}><Icon name="close" size={14} /></Button> : null}
+      <div className="file-search-controls">
+        <div className="file-search-row">
+          <Button variant="icon" aria-label="Remplacer dans les fichiers" title="Remplacer dans les fichiers" aria-expanded={replaceOpen} aria-controls="project-replace" onClick={() => setReplaceOpen(open => !open)}><Icon name={replaceOpen ? 'arrow-single-down' : 'arrow-single-right'} size={14} /></Button>
+          <div className="search-input"><Icon name="search" size={14} />
+            <TextInput ref={input} autoFocus id="project-content-search" aria-label="Rechercher dans le contenu" placeholder="Rechercher…" value={query} onChange={event => onQuery(event.target.value)} onKeyDown={event => {
+              if (event.key === 'Enter' && !searching && groups.length) { event.preventDefault(); onOpen(groups[0][1][0]); }
+              if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); }
+            }} />
+            {query ? <Button variant="icon" aria-label="Effacer la recherche" onClick={() => { onQuery(''); input.current?.focus(); }}><Icon name="close" size={14} /></Button> : null}
+          </div>
+          <Button variant="icon" className={include || exclude ? 'has-filters' : ''} aria-label="Filtrer les fichiers" title="Filtrer les fichiers" aria-expanded={filtersOpen} aria-controls="project-search-filters" onClick={() => setFiltersOpen(open => !open)}><Icon name="filter" size={14} /></Button>
+        </div>
+        {replaceOpen ? <div id="project-replace" className="file-search-row file-search-replace">
+          <TextInput aria-label="Texte de remplacement" placeholder="Remplacer par…" value={replacement} onChange={event => setReplacement(event.target.value)} />
+          <Button variant="icon" disabled={!trimmed || searching} aria-label="Prévisualiser le remplacement" title="Prévisualiser le remplacement" onClick={() => onReplace(trimmed, replacement, include, exclude)}><Icon name="edit" size={14} /></Button>
+        </div> : null}
+        {filtersOpen ? <div id="project-search-filters" className="file-search-filters">
+          <TextInput aria-label="Fichiers à inclure" placeholder="Inclure : **/*.ts" value={include} onChange={event => setInclude(event.target.value)} />
+          <TextInput aria-label="Fichiers à exclure" placeholder="Exclure : **/*.test.*" value={exclude} onChange={event => setExclude(event.target.value)} />
+        </div> : null}
       </div>
-      <p role="status" className="muted small-copy">{searching ? 'Recherche en cours…' : trimmed ? `${hits.length}${hasMore ? '+' : ''} résultat(s) dans ${groups.length} fichier(s)` : 'Cherchez du texte, puis ouvrez une occurrence à sa ligne.'}</p>
-      {trimmed && !searching && !hits.length ? <Text tone="muted" className="small-copy">Aucune correspondance.</Text> : null}
-      <div className="page-search-results" aria-busy={searching}>
-        {groups.map(([path, matches]) => <section className="search-result-group page-card" key={path}>
-          <Button className="search-result-path" aria-label={path} onClick={() => onOpen(matches[0])}><Icon name="files" size={16} /><strong>{path}</strong><span>{matches.length}</span><Icon name="arrow" size={14} /></Button>
-          {matches.map((hit, index) => <Button className="search-result-line" key={`${hit.line}:${index}`} onClick={() => onOpen(hit)} aria-label={`${path}, ligne ${hit.line}`}><span>{hit.line}</span><code>{hit.text.trim()}</code></Button>)}
-        </section>)}
+      <p role="status" className="file-search-count">{searching ? 'Recherche…' : trimmed ? count ? `${count}${hasMore ? '+' : ''} résultat${count > 1 ? 's' : ''} · ${groups.length} fichier${groups.length > 1 ? 's' : ''}` : 'Aucune correspondance.' : ''}</p>
+      <div className="file-search-results" aria-busy={searching}>
+        {groups.map(([path, matches]) => <details open className="file-search-group" key={path}>
+          <summary title={path}><Icon name="chevron" size={12} /><Icon name="files" size={14} /><strong>{path.split('/').pop()}</strong><small>{path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : ''}</small><span className="file-search-badge">{matches.length}</span></summary>
+          {matches.map((hit, index) => <Button className="file-search-match" key={`${hit.line}:${index}`} title={hit.text.trim()} onClick={() => onOpen(hit)} aria-label={`${path}, ligne ${hit.line}`}><span>{hit.line}</span><code>{highlight(hit.text.trim())}</code></Button>)}
+        </details>)}
+        {hasMore ? <Button variant="secondary" className="load-results" disabled={searching} onClick={onMore}>Charger la suite</Button> : null}
       </div>
-      {hasMore ? <Button className="button secondary load-results" disabled={searching} onClick={onMore}>Charger la suite</Button> : null}
     </section>
   );
 }

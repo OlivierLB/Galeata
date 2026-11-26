@@ -43,6 +43,13 @@ in_container() {
         sh -c "set -e; $1"
 }
 
+if [ "${1:-}" = "check-languages" ]; then
+    step "Vérification des serveurs de langage réels (fixtures isolées dans target/lsp-validation)"
+    in_container '[ -d dist ] || { npm ci --no-audit --no-fund && npm run build; }
+        cargo test --locked --manifest-path src-tauri/Cargo.toml --lib real_language_servers_cover_navigation_rename_diagnostics_and_formatting -- --ignored --nocapture'
+    exit 0
+fi
+
 if [ "${1:-}" = "check" ]; then
     step "Vérification Rust du workspace (fmt, clippy, tests)"
     # The desktop crate embeds ../dist: build the UI first if it is missing.
