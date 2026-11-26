@@ -1,0 +1,61 @@
+/* Monaco uses the same local CC0 Doodle catalogue as the rest of Galeata. */
+.monaco-editor .codicon[class*="codicon-"]::before {
+  content: "" !important;
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  background-color: currentColor;
+  -webkit-mask: url('/icons/doodle/file-code.svg') center / contain no-repeat;
+  mask: url('/icons/doodle/file-code.svg') center / contain no-repeat;
+}
+.monaco-editor .codicon.codicon-chevron-right::before { -webkit-mask-image: url("/icons/doodle/arrow-single-right.svg"); mask-image: url("/icons/doodle/arrow-single-right.svg"); }
+.monaco-editor .codicon.codicon-chevron-left::before { -webkit-mask-image: url("/icons/doodle/arrow-single-left.svg"); mask-image: url("/icons/doodle/arrow-single-left.svg"); }
+.monaco-editor .codicon.codicon-chevron-up::before { -webkit-mask-image: url("/icons/doodle/arrow-single-up.svg"); mask-image: url("/icons/doodle/arrow-single-up.svg"); }
+.monaco-editor .codicon.codicon-chevron-down::before { -webkit-mask-image: url("/icons/doodle/arrow-single-down.svg"); mask-image: url("/icons/doodle/arrow-single-down.svg"); }
+.monaco-editor .codicon.codicon-close::before { -webkit-mask-image: url("/icons/doodle/cross.svg"); mask-image: url("/icons/doodle/cross.svg"); }
+.monaco-editor .codicon.codicon-add::before { -webkit-mask-image: url("/icons/doodle/cross.svg"); mask-image: url("/icons/doodle/cross.svg"); }
+.monaco-editor .codicon.codicon-remove::before { -webkit-mask-image: url("/icons/doodle/doc-remove.svg"); mask-image: url("/icons/doodle/doc-remove.svg"); }
+.monaco-editor .codicon.codicon-search::before { -webkit-mask-image: url("/icons/doodle/search.svg"); mask-image: url("/icons/doodle/search.svg"); }
+.monaco-editor .codicon.codicon-replace::before { -webkit-mask-image: url("/icons/doodle/sync.svg"); mask-image: url("/icons/doodle/sync.svg"); }
+.monaco-editor .codicon.codicon-replace-all::before { -webkit-mask-image: url("/icons/doodle/sync.svg"); mask-image: url("/icons/doodle/sync.svg"); }
+.monaco-editor .codicon.codicon-case-sensitive::before { -webkit-mask-image: url("/icons/doodle/file-text.svg"); mask-image: url("/icons/doodle/file-text.svg"); }
+.monaco-editor .codicon.codicon-whole-word::before { -webkit-mask-image: url("/icons/doodle/file-text.svg"); mask-image: url("/icons/doodle/file-text.svg"); }
+.monaco-editor .codicon.codicon-regex::before { -webkit-mask-image: url("/icons/doodle/file-code.svg"); mask-image: url("/icons/doodle/file-code.svg"); }
+.monaco-editor .codicon.codicon-error::before { -webkit-mask-image: url("/icons/doodle/caution.svg"); mask-image: url("/icons/doodle/caution.svg"); }
+.monaco-editor .codicon.codicon-warning::before { -webkit-mask-image: url("/icons/doodle/caution.svg"); mask-image: url("/icons/doodle/caution.svg"); }
+.monaco-editor .codicon.codicon-info::before { -webkit-mask-image: url("/icons/doodle/info.svg"); mask-image: url("/icons/doodle/info.svg"); }
+.monaco-editor .codicon.codicon-lightbulb::before { -webkit-mask-image: url("/icons/doodle/bulb.svg"); mask-image: url("/icons/doodle/bulb.svg"); }
+.monaco-editor .codicon.codicon-light-bulb::before { -webkit-mask-image: url("/icons/doodle/bulb.svg"); mask-image: url("/icons/doodle/bulb.svg"); }
+.monaco-editor .codicon.codicon-folding-expanded::before { -webkit-mask-image: url("/icons/doodle/arrow-single-down.svg"); mask-image: url("/icons/doodle/arrow-single-down.svg"); }
+.monaco-editor .codicon.codicon-folding-collapsed::before { -webkit-mask-image: url("/icons/doodle/arrow-single-right.svg"); mask-image: url("/icons/doodle/arrow-single-right.svg"); }
+.monaco-editor .codicon.codicon-folding-manual-expanded::before { -webkit-mask-image: url("/icons/doodle/arrow-single-down.svg"); mask-image: url("/icons/doodle/arrow-single-down.svg"); }
+.monaco-editor .codicon.codicon-folding-manual-collapsed::before { -webkit-mask-image: url("/icons/doodle/arrow-single-right.svg"); mask-image: url("/icons/doodle/arrow-single-right.svg"); }
+.monaco-editor .codicon.codicon-symbol-method::before { -webkit-mask-image: url("/icons/doodle/file-code.svg"); mask-image: url("/icons/doodle/file-code.svg"); }
+.monaco-editor .codicon.codicon-symbol-function::before { -webkit-mask-image: url("/icons/doodle/file-code.svg"); mask-image: url("/icons/doodle/file-code.svg"); }
+.monaco-editor .codicon.codicon-symbol-variable::before { -webkit-mask-image: url("/icons/doodle/file-code.svg"); mask-image: url("/icons/doodle/file-code.svg"); }
+.monaco-editor .codicon.codicon-symbol-class::before { -webkit-mask-image: url("/icons/doodle/file-code.svg"); mask-image: url("/icons/doodle/file-code.svg"); }
+.monaco-editor .codicon.codicon-symbol-key::before { -webkit-mask-image: url("/icons/doodle/key.svg"); mask-image: url("/icons/doodle/key.svg"); }
+.monaco-editor .codicon.codicon-symbol-color::before { -webkit-mask-image: url("/icons/doodle/file-text.svg"); mask-image: url("/icons/doodle/file-text.svg"); }
+.monaco-editor .codicon.codicon-symbol-file::before { -webkit-mask-image: url("/icons/doodle/file.svg"); mask-image: url("/icons/doodle/file.svg"); }
+.monaco-editor .codicon.codicon-symbol-folder::before { -webkit-mask-image: url("/icons/doodle/folder.svg"); mask-image: url("/icons/doodle/folder.svg"); }
+.monaco-editor .codicon.codicon-symbol-text::before { -webkit-mask-image: url("/icons/doodle/file-text.svg"); mask-image: url("/icons/doodle/file-text.svg"); }
+.monaco-editor .codicon.codicon-check::before { -webkit-mask-image: url("/icons/doodle/tick.svg"); mask-image: url("/icons/doodle/tick.svg"); }
+.monaco-editor .codicon.codicon-clear-all::before { -webkit-mask-image: url("/icons/doodle/delete.svg"); mask-image: url("/icons/doodle/delete.svg"); }
+.monaco-editor .codicon.codicon-refresh::before { -webkit-mask-image: url("/icons/doodle/sync.svg"); mask-image: url("/icons/doodle/sync.svg"); }
+.monaco-editor .codicon.codicon-loading::before { -webkit-mask-image: url("/icons/doodle/sync.svg"); mask-image: url("/icons/doodle/sync.svg"); }
+.monaco-editor .codicon.codicon-ellipsis::before { -webkit-mask-image: url("/icons/doodle/menu.svg"); mask-image: url("/icons/doodle/menu.svg"); }
+.monaco-editor .codicon.codicon-gear::before { -webkit-mask-image: url("/icons/doodle/setting.svg"); mask-image: url("/icons/doodle/setting.svg"); }
+.monaco-editor .codicon.codicon-debug-breakpoint::before { -webkit-mask-image: url("/icons/doodle/caution.svg"); mask-image: url("/icons/doodle/caution.svg"); }
+.monaco-editor .codicon.codicon-debug-pause::before { -webkit-mask-image: url("/icons/doodle/pause.svg"); mask-image: url("/icons/doodle/pause.svg"); }
+.monaco-editor .codicon.codicon-debug-start::before { -webkit-mask-image: url("/icons/doodle/play.svg"); mask-image: url("/icons/doodle/play.svg"); }
+.monaco-editor .codicon.codicon-arrow-up::before { -webkit-mask-image: url("/icons/doodle/arrow-up.svg"); mask-image: url("/icons/doodle/arrow-up.svg"); }
+.monaco-editor .codicon.codicon-arrow-down::before { -webkit-mask-image: url("/icons/doodle/arrow-down.svg"); mask-image: url("/icons/doodle/arrow-down.svg"); }
+.monaco-editor .codicon.codicon-arrow-left::before { -webkit-mask-image: url("/icons/doodle/arrow-left.svg"); mask-image: url("/icons/doodle/arrow-left.svg"); }
+.monaco-editor .codicon.codicon-arrow-right::before { -webkit-mask-image: url("/icons/doodle/arrow-right.svg"); mask-image: url("/icons/doodle/arrow-right.svg"); }
+.monaco-editor .codicon.codicon-copy::before { -webkit-mask-image: url("/icons/doodle/file.svg"); mask-image: url("/icons/doodle/file.svg"); }
+.monaco-editor .codicon.codicon-save::before { -webkit-mask-image: url("/icons/doodle/floppy.svg"); mask-image: url("/icons/doodle/floppy.svg"); }
+.monaco-editor .codicon.codicon-split-horizontal::before { -webkit-mask-image: url("/icons/doodle/dashboard.svg"); mask-image: url("/icons/doodle/dashboard.svg"); }
+.monaco-editor .codicon.codicon-split-vertical::before { -webkit-mask-image: url("/icons/doodle/dashboard.svg"); mask-image: url("/icons/doodle/dashboard.svg"); }
+.monaco-editor .codicon.codicon-go-to-file::before { -webkit-mask-image: url("/icons/doodle/file.svg"); mask-image: url("/icons/doodle/file.svg"); }
+.monaco-editor .codicon.codicon-link-external::before { -webkit-mask-image: url("/icons/doodle/arrow-ne.svg"); mask-image: url("/icons/doodle/arrow-ne.svg"); }
+.monaco-editor .codicon.codicon-add::before { transform: rotate(45deg); }
