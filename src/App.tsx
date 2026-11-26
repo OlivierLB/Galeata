@@ -822,7 +822,7 @@ export default function App() {
   }, [palette, paletteQuery, workspace, error]);
   useEffect(() => {
     const searchShortcut = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       if (event.shiftKey && event.key.toLowerCase() === 'f' && workspace) {
         event.preventDefault(); event.stopPropagation(); openProjectSearch();
       }
@@ -832,7 +832,7 @@ export default function App() {
       }
     };
     const handler = (event: KeyboardEvent) => {
-      if (!(event.ctrlKey || event.metaKey)) return;
+      if (!(event.ctrlKey || event.metaKey) || event.altKey) return;
       if (event.key.toLowerCase() === 's') {
         event.preventDefault();
         if (active) void saveFile(active).catch(() => {});

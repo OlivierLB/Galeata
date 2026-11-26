@@ -115,7 +115,7 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
         {failed ? <span className="mascot-fallback" aria-hidden="true">🐢</span> : null}
       </button>
       {!compact ? <span className="mascot-caption">{snapshot.label}</span> : null}
-      {!compact && !reduced ? (
+      {!reduced ? (
         <button className="mascot-motion" aria-label={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
           title={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
           onClick={() => setMotion((value) => !value)}><Icon name={motion ? "pause" : "play"} size={12} /></button>

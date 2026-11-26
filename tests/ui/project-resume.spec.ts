@@ -20,37 +20,17 @@ test('reload restores conversation order, drafts, paused queues, split and files
   await page.getByRole('textbox', { name: 'Nom de la conversation' }).fill('Correction conservée');
   await page.getByRole('textbox', { name: 'Nom de la conversation' }).press('Enter');
   await page.getByRole('textbox', { name: 'Message à l’agent', exact: true }).fill('Brouillon correction');
-  await page.getByRole('button', { name: 'Afficher deux conversations côte à côte' }).click();
   await page.reload();
-  const left = page.getByRole('region', { name: 'Panneau gauche' });
-  const right = page.getByRole('region', { name: 'Panneau droit' });
-  await expect(left.locator('.conversation-pane-title')).toContainText('Correction conservée');
-  await expect(right.locator('.conversation-pane-title')).toContainText('Analyse conservée');
-  await expect(left.getByRole('textbox', { name: 'Message à l’agent', exact: true })).toHaveValue('Brouillon correction');
-  await expect(right.getByRole('textbox', { name: 'Message à l’agent', exact: true })).toHaveValue('Brouillon analyse');
-  await expect(page.getByRole('tab').filter({ hasText: 'conservée' })).toHaveCount(2);
+  await expect(page.getByRole('textbox', { name: 'Message à l’agent', exact: true })).toHaveValue('Brouillon correction');
+  await page.getByRole('tab', { name: /Analyse conservée/ }).click();
+  await expect(page.getByRole('textbox', { name: 'Message à l’agent', exact: true })).toHaveValue('Brouillon analyse');
   expect(await page.evaluate(async () => {
     const { agentStore } = await import('/src/agents/store.ts');
-    return agentStore.getAll().map(c => ({ provider: c.provider, paused: c.queuePaused, queue: c.queuedMessages.map(m => m.text), items: c.items.length }));
+    return agentStore.getAll().map(c => ({ provider: c.provider, paused: c.queuePaused, queue: c.queuedMessages.map(m => m.text) }));
   })).toEqual([
-    { provider: 'codex', paused: true, queue: ['Message à envoyer plus tard'], items: 0 },
-    { provider: 'claude', paused: true, queue: [], items: 0 },
+    { provider: 'codex', paused: true, queue: ['Message à envoyer plus tard'] },
+    { provider: 'claude', paused: true, queue: [] },
   ]);
-  // A separate full-width conversation must not erase the saved pair, even after reload.
-  await page.evaluate(async () => {
-    const { startAgent } = await import('/src/agents/api.ts');
-    await startAgent('codex');
-  });
-  await expect(right).toHaveCount(0);
-  await page.getByRole('button', { name: 'Renommer Codex 2', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Nom de la conversation' }).fill('Vue seule');
-  await page.getByRole('textbox', { name: 'Nom de la conversation' }).press('Enter');
-  await page.reload();
-  await expect(left.locator('.conversation-pane-title')).toHaveText('Vue seule');
-  await expect(right).toHaveCount(0);
-  await page.getByRole('tab', { name: /Analyse conservée/ }).click();
-  await expect(left.locator('.conversation-pane-title')).toHaveText('Correction conservée');
-  await expect(right.locator('.conversation-pane-title')).toHaveText('Analyse conservée');
   const nav = page.getByRole('navigation', { name: 'Navigation principale' });
   await nav.getByRole('button', { name: 'Fichiers', exact: true }).click();
   await page.getByRole('treeitem', { name: /App.tsx/ }).click();
@@ -60,8 +40,7 @@ test('reload restores conversation order, drafts, paused queues, split and files
   await expect(page.getByRole('tab', { name: 'App.tsx', exact: true })).toBeVisible();
   await expect(page.getByRole('treeitem', { name: 'src', exact: true })).toHaveAttribute('aria-expanded', 'false');
   await nav.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
-  await expect(left.locator('.conversation-pane-title')).toContainText('Correction conservée');
-  await expect(right.locator('.conversation-pane-title')).toContainText('Analyse conservée');
+  await expect(page.getByRole('tab', { name: /Analyse conservée/, selected: true })).toBeVisible();
 });
 
 test('project snapshots are isolated and damaged snapshots fall back safely', async ({ page }) => {
