@@ -136,6 +136,8 @@ export class AgentStore {
     }
   }
 
+  onDraftChange?: () => void;
+
   getDraft(id: string): string {
     return this.drafts.get(id) ?? '';
   }
@@ -143,6 +145,7 @@ export class AgentStore {
   setDraft(id: string, text: string) {
     if (text && this.conversations.has(id)) this.drafts.set(id, text);
     else this.drafts.delete(id);
+    this.onDraftChange?.();
   }
 
   subscribe = (listener: Listener) => {
@@ -179,11 +182,20 @@ export class AgentStore {
     else this.changed();
   }
 
+  reorder(id: string, before: string) {
+    if (id === before || !this.conversations.has(id) || !this.conversations.has(before)) return;
+    const target = this.order.indexOf(before);
+    this.order = this.order.filter(value => value !== id);
+    this.order.splice(target, 0, id);
+    this.changed();
+  }
+
   remove(id: string) {
     mascot.remove(id);
     this.drafts.delete(id);
     this.conversations.delete(id);
     this.positions.delete(id);
+    this.early.delete(id);
     this.order = this.order.filter((value) => value !== id);
     this.changed();
   }
@@ -191,6 +203,7 @@ export class AgentStore {
   clear() {
     mascot.clear();
     this.drafts.clear();
+    this.early.clear();
     this.conversations.clear();
     this.positions.clear();
     this.order = [];
@@ -217,7 +230,8 @@ export class AgentStore {
     const positions = this.positions.get(id);
     if (!current || !positions) {
       const buffered = this.early.get(id) ?? [];
-      if (buffered.length < 1000) this.early.set(id, buffered.concat(events));
+      if (!this.early.has(id) && this.early.size >= 32) return;
+      this.early.set(id, buffered.concat(events).slice(-1000));
       return;
     }
     const next: Conversation = { ...current };
@@ -300,6 +314,10 @@ export class AgentStore {
             (item) => ({ ...item, text: event.text }),
           );
           break;
+        case 'toolInput':
+          upsert(event.itemId, () => ({ id: event.itemId, kind: 'tool', text: '' }),
+            item => ({ ...item, input: event.input }));
+          break;
         case 'toolStarted':
           upsert(
             event.itemId,
@@ -328,7 +346,7 @@ export class AgentStore {
               ...item,
               running: false,
               ok: event.ok,
-              output: event.output ?? item.output,
+              output: event.output == null ? item.output : keepTail(event.output),
             }),
           );
           break;

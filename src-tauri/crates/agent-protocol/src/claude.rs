@@ -228,6 +228,12 @@ impl Claude {
                         continue;
                     }
                     let (tool, title, path) = describe_tool(name, &block["input"], &self.cwd);
+                    if tool == ToolKind::Agent {
+                        out.events.push(AgentEvent::ToolInput {
+                            item_id: block["id"].as_str().unwrap_or_default().to_owned(),
+                            input: block["input"].clone(),
+                        });
+                    }
                     out.events.push(AgentEvent::ToolStarted {
                         item_id: block["id"].as_str().unwrap_or_default().to_owned(),
                         tool,

@@ -63,6 +63,7 @@ export type AgentEvent =
   | { type: 'message'; itemId: string; text: string }
   | { type: 'reasoning'; itemId: string; text: string }
   | { type: 'toolStarted'; itemId: string; tool: ToolKind; title: string; path: string | null }
+  | { type: 'toolInput'; itemId: string; input: Record<string, unknown> }
   | { type: 'toolOutput'; itemId: string; text: string }
   | { type: 'toolCompleted'; itemId: string; ok: boolean; output: string | null }
   | { type: 'fileChanges'; itemId: string; changes: FileChange[] }
@@ -97,6 +98,7 @@ export interface ChatItem {
   running?: boolean;
   ok?: boolean;
   output?: string;
+  input?: Record<string, unknown>;
   changes?: FileChange[];
   /** Plan and question cards: the pending request, then how it was answered. */
   requestId?: string;

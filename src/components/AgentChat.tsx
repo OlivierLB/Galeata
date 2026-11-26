@@ -293,6 +293,8 @@ export default function AgentChat({
 }: { id: string; showTools?: boolean } & Actions) {
   const conversation = useSyncExternalStore(agentStore.subscribe, () => agentStore.get(id));
   const scroller = useRef<HTMLDivElement>(null);
+  const [historyWindow, setHistoryWindow] = useState({ id, count: 100 });
+  const visibleCount = historyWindow.id === id ? historyWindow.count : 100;
   const stick = useRef(true);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -352,7 +354,15 @@ export default function AgentChat({
               ) : null}
             </div>
           ) : null}
-          {conversation.items.map((item) =>
+          {conversation.items.length > visibleCount ? (
+            <button className="text-button" onClick={() => {
+              stick.current = false;
+              setHistoryWindow({ id, count: visibleCount + 100 });
+            }}>Afficher 100 éléments précédents</button>
+          ) : null}
+          {conversation.items.filter((item, index) =>
+            index >= conversation.items.length - visibleCount || item.status === 'pending',
+          ).map((item) =>
             showTools || (item.kind !== 'tool' && item.kind !== 'reasoning') ? (
               <ItemView key={item.id} item={item} actions={stableActions} />
             ) : null,

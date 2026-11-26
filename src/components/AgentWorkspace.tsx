@@ -1,3 +1,4 @@
+import type { Activity, Plan } from '../types.ts';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { desktop } from '../api.ts';
 import { agentStore } from '../agents/store.ts';
@@ -5,6 +6,7 @@ import { closeAgent, listenToAgents, startAgent } from '../agents/api.ts';
 import { readShowTools, resolveAgent, writeShowTools } from '../agents/preferences.ts';
 import { providerNames, type Provider } from '../agents/types.ts';
 import type { Provider as ProviderInfo, Session } from '../types.ts';
+import { useConversationLayout } from './useConversationLayout.ts';
 import { relativeTime } from '../domain.ts';
 import AgentChat from './AgentChat.tsx';
 import { Icon } from './Icon.tsx';
@@ -22,9 +24,10 @@ const install: Record<Provider, { command: string; docs: string }> = {
 
 /**
  * The center of Galeata: agent conversations. One "+" starts the default
- * agent (chosen in the preferences); tabs, plus an optional side-by-side view.
+ * agent (chosen in the preferences), with one active conversation tab.
  */
 export default function AgentWorkspace({
+  workspaceId,
   providers,
   sessions,
   defaultAgent,
@@ -36,6 +39,9 @@ export default function AgentWorkspace({
   onRefreshProviders,
   onActiveChange,
 }: {
+  workspaceId?: string;
+  missionEvents?: Activity[];
+  missionPlan?: Plan;
   providers: ProviderInfo[];
   sessions: Session[];
   defaultAgent: Provider;
@@ -48,9 +54,38 @@ export default function AgentWorkspace({
   onActiveChange: (id: string) => void;
 }) {
   const conversations = useSyncExternalStore(agentStore.subscribe, agentStore.getAll);
-  const [active, setActive] = useState('');
+  const { active, select: setActive } = useConversationLayout(conversations.map(c => c.id), workspaceId, onError);
   useEffect(() => { onActiveChange(active); }, [active, onActiveChange]);
-  const [split, setSplit] = useState(false);
+  const [names, setNames] = useState<Record<string, string>>(() => {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem('galeata:conversation-names') ?? '{}');
+      return saved && typeof saved === 'object' && !Array.isArray(saved)
+        ? Object.fromEntries(Object.entries(saved).filter(([, value]) => typeof value === 'string').slice(-200)) : {};
+    } catch { return {}; }
+  });
+  const [renaming, setRenaming] = useState('');
+  const [draftName, setDraftName] = useState('');
+  const dragging = useRef('');
+  function endDrag() { dragging.current = ''; }
+  function label(id: string) {
+    const conversation = agentStore.get(id);
+    if (!conversation) return '';
+    const first = conversation.items.find(item => item.kind === 'user')?.text.trim().split('\n')[0];
+    const number = conversations.filter(c => c.provider === conversation.provider).findIndex(c => c.id === id) + 1;
+    return names[`${conversation.provider}:${conversation.sessionId ?? id}`] || names[id] || first?.slice(0, 60) || `${providerNames[conversation.provider]} ${number}`;
+  }
+  function rename(id: string) {
+    const name = draftName.trim().slice(0, 80);
+    const conversation = agentStore.get(id);
+    if (name && conversation) setNames(previous => {
+      const next = Object.fromEntries(Object.entries({ ...previous,
+        [id]: name, [`${conversation.provider}:${conversation.sessionId ?? id}`]: name,
+      }).slice(-200));
+      try { localStorage.setItem('galeata:conversation-names', JSON.stringify(next)); } catch { /* optional storage */ }
+      return next;
+    });
+    setRenaming('');
+  }
   const [starting, setStarting] = useState(false);
   const [showTools, setShowTools] = useState(readShowTools);
   useEffect(() => {
@@ -59,16 +94,6 @@ export default function AgentWorkspace({
   useEffect(() => {
     void listenToAgents();
   }, []);
-  // A new conversation (from here or from the sidebar) becomes the active one;
-  // closing the active one falls back to the most recent.
-  const count = useRef(conversations.length);
-  useEffect(() => {
-    const grew = conversations.length > count.current;
-    count.current = conversations.length;
-    if (grew || !conversations.some((c) => c.id === active))
-      setActive(conversations[conversations.length - 1]?.id ?? '');
-  }, [conversations, active]);
-
   const available = (['claude', 'codex'] as Provider[]).filter(
     (id) => providers.find((p) => p.id === id)?.available,
   );
@@ -87,7 +112,6 @@ export default function AgentWorkspace({
       setStarting(false);
     }
   }
-  const second = split ? conversations.filter((c) => c.id !== active).at(-1) : undefined;
   const newLabel = !desktop
     ? 'Nouvelle conversation de démonstration'
     : agent
@@ -100,20 +124,43 @@ export default function AgentWorkspace({
         {conversations.map((conversation) => (
           <div
             key={conversation.id}
+            draggable={renaming !== conversation.id}
+            onDragStart={event => {
+              dragging.current = conversation.id;
+              event.dataTransfer.setData('text/plain', conversation.id);
+              event.dataTransfer.effectAllowed = 'move';
+            }}
+            onDragEnd={endDrag}
+            onDragOver={event => event.preventDefault()}
+            onDrop={event => {
+              event.preventDefault();
+              agentStore.reorder(dragging.current || event.dataTransfer.getData('text/plain'), conversation.id);
+              endDrag();
+            }}
             className={`agent-tab ${conversation.id === active ? 'active' : ''}`}
           >
             <button
               role="tab"
               aria-selected={conversation.id === active}
-              onClick={() => setActive(conversation.id)}
+              onDoubleClick={() => { setRenaming(conversation.id); setDraftName(label(conversation.id)); }}
+              title={`${label(conversation.id)} · ${providerNames[conversation.provider]} · Double-cliquer pour renommer`}
+              onClick={() => {
+                setActive(conversation.id);
+              }}
             >
               <span className={`status-dot state-${conversation.state}`} />
-              {providerNames[conversation.provider]}
-              {conversation.demo ? ' · démo' : ''}
+              <span className="conversation-name">{label(conversation.id)}</span>
             </button>
+            {renaming === conversation.id ? <input autoFocus aria-label="Nom de la conversation"
+              value={draftName} maxLength={80} onChange={event => setDraftName(event.target.value)}
+              onBlur={() => rename(conversation.id)} onKeyDown={event => {
+                if (event.key === 'Enter') rename(conversation.id);
+                if (event.key === 'Escape') setRenaming('');
+              }} /> : <button className="tab-close" aria-label={`Renommer ${label(conversation.id)}`}
+              onClick={() => { setRenaming(conversation.id); setDraftName(label(conversation.id)); }}>✎</button>}
             <button
               className="tab-close"
-              aria-label={`Fermer la conversation ${providerNames[conversation.provider]}`}
+              aria-label={`Fermer la conversation ${label(conversation.id)}`}
               onClick={() => void closeAgent(conversation.id).catch(onError)}
             >
               <Icon name="close" size={12} />
@@ -122,10 +169,9 @@ export default function AgentWorkspace({
         ))}
         <button
           className="icon-button agent-new"
-          title={newLabel}
+          title="Nouvelle conversation"
           aria-label="Nouvelle conversation"
-          disabled={starting || (!agent && desktop)}
-          onClick={() => void start(agent)}
+          onClick={() => setActive('')}
         >
           <Icon name="plus" size={16} />
         </button>
@@ -143,38 +189,15 @@ export default function AgentWorkspace({
             >
               Texte uniquement
             </button>
-            {conversations.length > 1 ? (
-              <button
-                className={`icon-button ${split ? 'active' : ''}`}
-                title="Afficher deux conversations côte à côte"
-                aria-label="Afficher deux conversations côte à côte"
-                aria-pressed={split}
-                onClick={() => setSplit((value) => !value)}
-              >
-                <Icon name="panel" size={15} />
-              </button>
-            ) : null}
+
           </div>
         ) : null}
       </div>
+
       {active ? (
-        <div className={`agent-panes ${second ? 'split' : ''}`}>
-          <AgentChat
-            key={active}
-            id={active}
-            showTools={showTools}
-            onOpenFile={onOpenFile}
-            onShowDiff={onShowDiff}
-          />
-          {second ? (
-            <AgentChat
-              key={second.id}
-              id={second.id}
-              showTools={showTools}
-              onOpenFile={onOpenFile}
-              onShowDiff={onShowDiff}
-            />
-          ) : null}
+        <div className="agent-panes">
+          <AgentChat key={active} id={active} showTools={showTools}
+            onOpenFile={onOpenFile} onShowDiff={onShowDiff} />
         </div>
       ) : (
         <div className="agent-home">
@@ -284,6 +307,7 @@ export default function AgentWorkspace({
           ) : null}
         </div>
       )}
+
     </div>
   );
 }

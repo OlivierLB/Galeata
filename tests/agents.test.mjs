@@ -175,3 +175,40 @@ test('un plan proposé devient une carte, puis garde sa décision', () => {
   ]);
   assert.equal(store.get('a').items[1].status, 'closed');
 });
+
+
+test('final tool output obeys the same memory limit as streaming output', () => {
+  const store = new AgentStore();
+  store.create('a', 'codex');
+  store.apply('a', [{ type: 'toolCompleted', itemId: 't', ok: true,
+    output: 'x'.repeat(2 * 1024 * 1024) + 'TAIL' }]);
+  const output = store.get('a').items[0].output;
+  assert.equal(output.length, 256 * 1024);
+  assert.ok(output.endsWith('TAIL'));
+});
+
+test('workspace reset drops early events and unknown agents cannot grow the buffer forever', () => {
+  const store = new AgentStore();
+  store.apply('a', [{ type: 'message', itemId: 'old', text: 'Old project' }]);
+  store.clear();
+  store.create('a', 'codex');
+  assert.equal(store.get('a').items.length, 0);
+  for (let i = 0; i < 100; i++)
+    store.apply(`unknown-${i}`, [{ type: 'notice', message: 'late' }]);
+  store.create('unknown-99', 'codex');
+  assert.equal(store.get('unknown-99').items.length, 0);
+});
+
+
+test('tab ordering moves in either direction without changing conversations or drafts', () => {
+  const store = new AgentStore();
+  store.create('a', 'codex'); store.create('b', 'codex');
+  store.setDraft('a', 'Keep my draft');
+  const conversation = store.get('a');
+  store.reorder('a', 'b');
+  assert.deepEqual(store.getAll().map(c => c.id), ['b', 'a']);
+  store.reorder('a', 'b');
+  assert.deepEqual(store.getAll().map(c => c.id), ['a', 'b']);
+  assert.equal(store.get('a'), conversation);
+  assert.equal(store.getDraft('a'), 'Keep my draft');
+});

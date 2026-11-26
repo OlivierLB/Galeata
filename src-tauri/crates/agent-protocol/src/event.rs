@@ -60,6 +60,11 @@ pub enum AgentEvent {
         path: Option<String>,
     },
     #[serde(rename_all = "camelCase")]
+    ToolInput {
+        item_id: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename_all = "camelCase")]
     ToolOutput {
         item_id: String,
         text: String,
