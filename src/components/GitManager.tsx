@@ -324,6 +324,29 @@ export default function GitManager({
         </section>
       ) : tab === 'branches' ? (
         <>
+          <form
+            className="git-inline-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!canChange || !name.trim()) return;
+              void perform('branch', { name: name.trim() }, 'Branche créée et activée.');
+            }}
+          >
+            <label htmlFor="new-git-branch">Nouvelle branche depuis {git.branch}</label>
+            <div>
+              <TextInput
+                id="new-git-branch"
+                required
+                value={name}
+                placeholder="feature/ma-mission"
+                disabled={!canChange}
+                onChange={(event) => setName(event.target.value)}
+              />
+              <Button type="submit" className="button small" disabled={!canChange || !name.trim()}>
+                Créer et activer
+              </Button>
+            </div>
+          </form>
           <div className="git-sync-actions">
             <Button
               className="button secondary small"
@@ -443,28 +466,6 @@ export default function GitManager({
               ))
             )}
           </div>
-          <form
-            className="git-inline-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void perform('branch', { name }, 'Branche créée et activée.');
-            }}
-          >
-            <label htmlFor="new-git-branch">Nouvelle branche depuis {git.branch}</label>
-            <div>
-              <TextInput
-                id="new-git-branch"
-                required
-                value={name}
-                placeholder="feature/ma-mission"
-                disabled={!canChange}
-                onChange={(event) => setName(event.target.value)}
-              />
-              <Button className="button small" disabled={!canChange || !name.trim()}>
-                Créer et activer
-              </Button>
-            </div>
-          </form>
         </>
       ) : (
         <>
