@@ -217,9 +217,10 @@ impl Workspace {
         )?;
         let mut items = Vec::new();
         if files {
+            let folded_query = query.to_lowercase();
             for line in output
                 .lines()
-                .filter(|p| p.to_lowercase().contains(&query.to_lowercase()))
+                .filter(|p| p.to_lowercase().contains(&folded_query))
                 .skip(offset)
                 .take(201)
             {
@@ -229,6 +230,9 @@ impl Workspace {
             for line in output.lines() {
                 if let Ok(v) = serde_json::from_str::<Value>(line) {
                     if v["type"] == "match" {
+                        if items.len() >= offset + 201 {
+                            break;
+                        }
                         items.push(json!({"path":v["data"]["path"]["text"].as_str().unwrap_or("").trim_start_matches("./"),"line":v["data"]["line_number"],"text":v["data"]["lines"]["text"].as_str().unwrap_or("").trim_end()}));
                     }
                 }
@@ -365,6 +369,19 @@ mod tests {
             .write("a.txt", "three", file["stamp"].as_str().unwrap())
             .is_err());
         assert_eq!(w.read("a.txt").unwrap()["content"], "two");
+    }
+    #[test]
+    fn text_search_keeps_pagination_after_bounding_results() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.txt"), "needle\n".repeat(450)).unwrap();
+        let workspace = Workspace::open(dir.path().to_str().unwrap()).unwrap();
+        let first = workspace.search("needle", false, 0).unwrap();
+        assert_eq!(first["items"].as_array().unwrap().len(), 200);
+        assert_eq!(first["nextOffset"], 200);
+        let last = workspace.search("needle", false, 400).unwrap();
+        assert_eq!(last["items"].as_array().unwrap().len(), 50);
+        assert_eq!(last["items"][0]["line"], 401);
+        assert!(last["nextOffset"].is_null());
     }
     #[cfg(unix)]
     #[test]

@@ -23,6 +23,7 @@ pub struct Running {
     pub agent: Agent,
     pub provider: String,
     pub workspace: String,
+    pub plan_scope: String,
 }
 pub type Agents = Mutex<HashMap<String, Running>>;
 
@@ -41,9 +42,24 @@ pub fn start(
             return Err("Identifiant de session invalide".into());
         }
     }
+    let id = uuid::Uuid::new_v4().to_string();
+    let state = app.state::<Arc<crate::State>>();
+    let alias = resume.map(|session| format!("plan-session:{provider}:{session}"));
+    let plan_scope = alias
+        .as_deref()
+        .and_then(|key| state.store.preference(&w.id, key).ok())
+        .and_then(|value| value.as_str().map(str::to_owned))
+        .unwrap_or_else(|| format!("{}:conversation:{}", w.id, resume.unwrap_or(&id)));
     let cwd = w.root.to_string_lossy().into_owned();
     let bridge = terminal::bridge_path(app)?;
-    let bridge_args = json!(["--socket", socket.to_string_lossy(), "--workspace", w.id]);
+    let bridge_args = json!([
+        "--socket",
+        socket.to_string_lossy(),
+        "--workspace",
+        w.id,
+        "--conversation",
+        id
+    ]);
     let (launch, protocol): (Launch, Box<dyn Protocol>) = match provider {
         "claude" => {
             let mut args: Vec<String> = [
@@ -130,7 +146,6 @@ pub fn start(
         }
         _ => return Err(format!("Fournisseur inconnu : {provider}")),
     };
-    let id = uuid::Uuid::new_v4().to_string();
     // Claude does not replay a resumed session in structured mode: read its
     // transcript and send it first (Codex returns it in `thread/resume`).
     if let (Some(session), "claude") = (resume, provider) {
@@ -143,7 +158,7 @@ pub fn start(
                 }) {
                     sync_proposed_plan(
                         app,
-                        &w.id,
+                        &plan_scope,
                         &format!("agent:{provider}"),
                         std::slice::from_ref(plan),
                         last_plan_timestamp(&transcript).as_deref(),
@@ -162,12 +177,24 @@ pub fn start(
     let event_app = app.clone();
     let agent_id = id.clone();
     let workspace_id = w.id.clone();
+    let event_scope = plan_scope.clone();
+    let event_provider = provider.to_owned();
     let author = format!("agent:{provider}");
     let agent = Agent::spawn(
         launch,
         protocol,
         Arc::new(move |events| {
-            sync_proposed_plan(&event_app, &workspace_id, &author, &events, None);
+            for event in &events {
+                if let AgentEvent::Session { session_id, .. } = event {
+                    let state = event_app.state::<Arc<crate::State>>();
+                    let _ = state.store.set_preference(
+                        &workspace_id,
+                        &format!("plan-session:{event_provider}:{session_id}"),
+                        &json!(event_scope),
+                    );
+                }
+            }
+            sync_proposed_plan(&event_app, &event_scope, &author, &events, None);
             let _ = event_app.emit("agent:events", json!({"agentId":agent_id,"events":events}));
         }),
     )
@@ -180,6 +207,7 @@ pub fn start(
             agent,
             provider: provider.to_owned(),
             workspace: w.id.clone(),
+            plan_scope,
         },
     );
     Ok(json!({"id":id,"provider":provider}))
@@ -196,7 +224,7 @@ fn with_agent<T>(agents: &Agents, id: &str, f: impl FnOnce(&Agent) -> Result<T>)
 }
 
 pub fn send(agents: &Agents, id: &str, text: &str) -> Result<Value> {
-    with_agent(agents, id, |agent| agent.send_text(text)).map(|_| Value::Null)
+    with_agent(agents, id, |agent| agent.send_text(&format!("{text}\n\n[Galeata : après ce message, lisez plan.get, ajoutez les nouvelles tâches sans doublons et préservez les tâches terminées. Actualisez plan.update_step au début et à la fin de chaque tâche, avant votre réponse finale.]"))).map(|_| Value::Null)
 }
 
 pub fn respond(agents: &Agents, id: &str, request: &str, decision: &str) -> Result<Value> {
@@ -331,7 +359,7 @@ fn read_claude_transcript(projects: &Path, session: &str) -> Option<String> {
 }
 
 /// Given to agents started from Galeata (with the galeata MCP server).
-const PLAN_INSTRUCTIONS: &str = "Galeata affiche à l’utilisateur un plan de mission à côté de cette conversation, via le serveur MCP « galeata ». Tenez-le à jour sans qu’on vous le demande et sans le mentionner dans vos réponses : à chaque nouvelle tâche, ou quand un message de l’utilisateur change l’objectif ou le périmètre, appelez plan.get puis plan.set (objectif en une phrase, 3 à 10 étapes concrètes, dans la langue de l’utilisateur, en gardant les étapes inchangées) ; au début et à la fin de chaque étape, appelez plan.update_step (in_progress, done, ou blocked avec une note courte). Passez toujours la révision lue ; en cas de REVISION_CONFLICT, relisez avec plan.get puis réessayez. Si vous avez rédigé un plan détaillé (contexte, hypothèses, détail des étapes), passez-le en markdown dans le champ document de plan.set : l’utilisateur le lit dans Galeata. Pour une question simple qui ne demande aucun travail, ne touchez pas au plan. Si plan.get renvoie tracked: false, l’avancement de ce plan n’a jamais été suivi : indiquez l’état réel de chaque étape avec plan.update_step d’après ce qui a réellement été fait, avant toute autre chose.";
+const PLAN_INSTRUCTIONS: &str = "Pour chaque sous-agent utilisé, déclarez son identité avec activity.report, son parentId, sa name et son initialPrompt complet ; actualisez ses tasks (liste des tâches en cours) et son status pendant son travail. Le parentId doit identifier cette session ou un sous-agent déjà déclaré. Galeata affiche à l’utilisateur un plan de mission à côté de cette conversation, via le serveur MCP « galeata ». Tenez-le à jour sans qu’on vous le demande et sans le mentionner dans vos réponses : après chaque message utilisateur, réconciliez la checklist : ajoutez les nouvelles tâches sans doublons, préservez les tâches terminées et rouvrez celles à corriger ; appelez plan.get puis plan.set (objectif en une phrase, des étapes concrètes, dans la langue de l’utilisateur, en gardant les étapes inchangées) ; au début et à la fin de chaque étape, appelez plan.update_step (in_progress, done, ou blocked avec une note courte). Passez toujours la révision lue ; en cas de REVISION_CONFLICT, relisez avec plan.get puis réessayez. Si vous avez rédigé un plan détaillé (contexte, hypothèses, détail des étapes), passez-le en markdown dans le champ document de plan.set : l’utilisateur le lit dans Galeata. Pour une question simple, lisez le plan et conservez-le si aucune tâche ne change. Si plan.get renvoie tracked: false, l’avancement de ce plan n’a jamais été suivi : indiquez l’état réel de chaque étape avec plan.update_step d’après ce qui a réellement été fait, avant toute autre chose.";
 
 /// Added when a conversation is resumed: its plan may never have been tracked,
 /// and only the agent knows what was done. Checked on the next reply, whatever it is.
@@ -366,8 +394,7 @@ fn sync_proposed_plan(
                 .store
                 .plan(workspace)
                 .ok()
-                .and_then(|current| current["objective"].as_str().map(str::to_owned))
-                .is_some_and(|objective| objective.trim() == draft.objective.trim())
+                .is_some_and(|current| current["revision"].as_u64().unwrap_or(0) > 0)
         {
             // Already shown (maybe with progress since): keep it as it is.
             continue;
@@ -397,7 +424,7 @@ fn sync_proposed_plan(
         );
         match saved {
             Ok(_) => {
-                let _ = app.emit("plan:changed", json!({"workspaceId":workspace}));
+                let _ = app.emit("plan:changed", json!({"workspaceId":workspace.split(":conversation:").next().unwrap_or(workspace)}));
             }
             Err(error) => {
                 let _ = state.store.record(

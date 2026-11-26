@@ -53,3 +53,17 @@ Les agents lancés depuis Galeata reçoivent une consigne (`--append-system-prom
 Négociation des versions `2024-11-05`, `2025-03-26`, `2025-06-18`. Outils uniquement : pas de ressources, prompts, streaming HTTP ou abonnements MCP en première version. La compatibilité avec les versions exactes des clients reste à tester.
 
 Messages d’entrée limités à 1 Mio, réponses de passerelle à 4 Mio, événements à 128 Kio, recherches à 200 résultats par page. Le serveur accepte au plus 16 connexions simultanées. Les notifications sans identifiant ne reçoivent pas de réponse. Les erreurs d’exécution d’outil utilisent `isError: true`.
+
+### Plans par conversation
+
+Les agents lancés dans Galeata reçoivent une passerelle MCP liée à leur conversation (`--conversation`). Les appels de plan sont résolus côté serveur vers ce contexte, indépendamment de l’onglet affiché. Le plan est conservé à la reprise grâce à l’identifiant de session du fournisseur. Les anciennes passerelles sans contexte gardent le plan historique du projet, sans le recopier dans les nouvelles conversations.
+
+La checklist évolue après chaque message : ajout des nouvelles tâches sans doublons, conservation des tâches terminées, réouverture des corrections et avancement déclaré pendant le travail. Une case cochée reste une déclaration de réalisation.
+
+### Suivi des sous-agents
+
+Les déclarations reçues via une passerelle liée à une conversation portent un `conversationScope` ajouté par Galeata. `activity.list` côté interface peut être filtré par `conversationId` ; cette identité est résolue côté serveur vers le contexte persistant de la conversation. Les anciennes déclarations sans contexte ne sont pas attribuées arbitrairement à une conversation.
+
+Les événements normalisés `toolInput` conservent les arguments des délégations pour afficher la consigne initiale complète. Le pied du champ de message ouvre une fenêtre avec un onglet par sous-agent actif, ses tâches déclarées et ses comptes rendus. Les terminés restent accessibles avec « Inclure les terminés ». Une donnée absente reste signalée comme non transmise.
+
+`activity.report` accepte aussi `name`, `initialPrompt` et `tasks` (tableau de textes). Le pilote conserve l’identité du sous-agent et indique son `parentId` ; la liste `tasks` décrit son travail en cours et peut être vidée à la fin.

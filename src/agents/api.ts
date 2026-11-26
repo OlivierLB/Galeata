@@ -25,13 +25,13 @@ export function listenToAgents() {
   return listening;
 }
 
-export async function startAgent(provider: Provider, resumeId?: string): Promise<string> {
+export async function startAgent(provider: Provider, resumeId?: string, mode?: string): Promise<string> {
   if (!desktop) return startDemo(provider);
   await listenToAgents();
   const { id } = await request<{ id: string }>('agent.start', {
     provider,
     resumeId,
-    mode: readStartMode(provider),
+    mode: mode ?? readStartMode(provider),
   });
   // Events that arrived before this point are buffered by the store and replayed.
   if (!agentStore.get(id)) agentStore.create(id, provider);

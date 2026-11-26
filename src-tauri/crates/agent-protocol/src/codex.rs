@@ -353,9 +353,27 @@ impl Codex {
                 item["query"].as_str().unwrap_or_default().to_owned(),
                 None,
             ),
-            Some("collabAgentToolCall") => (ToolKind::Agent, "Sous-agent".to_owned(), None),
+            Some("collabAgentToolCall") => {
+                let action = item["tool"].as_str().unwrap_or("Sous-agent");
+                let prompt = item["prompt"].as_str().unwrap_or_default();
+                (
+                    ToolKind::Agent,
+                    if prompt.is_empty() {
+                        action.to_owned()
+                    } else {
+                        format!("{} · {}", action, head(prompt, 240))
+                    },
+                    None,
+                )
+            }
             _ => return,
         };
+        if tool == ToolKind::Agent {
+            out.events.push(AgentEvent::ToolInput {
+                item_id: id.clone(),
+                input: json!({"prompt":item["prompt"], "action":item["tool"], "destinations":item["receiverThreadIds"]}),
+            });
+        }
         out.events.push(AgentEvent::ToolStarted {
             item_id: id,
             tool,
@@ -430,13 +448,20 @@ impl Codex {
                     output: None,
                 });
             }
-            Some("mcpToolCall") | Some("webSearch") | Some("collabAgentToolCall") => {
+            Some("collabAgentToolCall") => {
+                let detail = json!({"action":item["tool"], "agents":item["agentsStates"],
+                    "destinations":item["receiverThreadIds"]});
                 out.events.push(AgentEvent::ToolCompleted {
                     item_id: id,
                     ok: completed || item["status"].is_null(),
-                    output: None,
-                })
+                    output: Some(head(&detail.to_string(), MAX_TOOL_OUTPUT)),
+                });
             }
+            Some("mcpToolCall") | Some("webSearch") => out.events.push(AgentEvent::ToolCompleted {
+                item_id: id,
+                ok: completed || item["status"].is_null(),
+                output: None,
+            }),
             _ => {}
         }
     }
@@ -895,4 +920,30 @@ fn is_plan_tool(item: &Value) -> bool {
         && item["tool"]
             .as_str()
             .is_some_and(|t| t.starts_with("plan."))
+}
+
+#[cfg(test)]
+mod delegation_tests {
+    use super::*;
+    #[test]
+    fn delegation_preserves_mission_and_reported_agent_states() {
+        let mut codex = Codex::new("/tmp", None);
+        let start = codex.handle_line(
+            &json!({"method":"item/started","params":{"item":{
+                "type":"collabAgentToolCall","id":"delegate-1","tool":"spawnAgent",
+                "prompt":"Inspecter les performances"
+            }}})
+            .to_string(),
+        );
+        assert!(
+            start.events.iter().any(|event| matches!(event,
+            AgentEvent::ToolStarted { title, .. } if title.contains("Inspecter les performances")))
+        );
+        let end = codex.handle_line(&json!({"method":"item/completed","params":{"item":{
+            "type":"collabAgentToolCall","id":"delegate-1","tool":"spawnAgent","status":"completed",
+            "receiverThreadIds":["child-1"],"agentsStates":{"child-1":{"status":"running"}}
+        }}}).to_string());
+        assert!(end.events.iter().any(|event| matches!(event,
+            AgentEvent::ToolCompleted { output: Some(output), .. } if output.contains("child-1") && output.contains("running"))));
+    }
 }

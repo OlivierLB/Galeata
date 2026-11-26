@@ -1,3 +1,4 @@
+import Subagents from './Subagents.tsx';
 import MessageQueue from './MessageQueue.tsx';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { request } from '../api.ts';
@@ -498,7 +499,7 @@ export function AgentComposer({
         </div>
       </div>
       <div className="composer-meta">
-        <span>Entrée pour envoyer · Tab pour mettre en file</span>
+        <Subagents conversation={conversation} />
         <details className="composer-help">
           <summary>Raccourcis</summary>
           <p>

@@ -16,15 +16,17 @@ test('chaque destination possède sa page et les fichiers restent ouverts', asyn
 
   await navigation.getByRole('button', { name: 'Git', exact: true }).click();
   const git = page.getByRole('region', { name: 'Relecture du code' });
-  await expect(git.getByRole('heading', { name: 'Vos changements, en perspective.' })).toBeVisible();
-  await expect(git.getByRole('heading', { name: 'Fichiers à relire' })).toBeVisible();
+  await expect(git.getByRole('heading', { name: 'Changements' })).toBeVisible();
+  await expect(git.getByRole('textbox', { name: 'Filtrer les fichiers Git' })).toBeVisible();
+  await git.getByRole('textbox', { name: 'Filtrer les fichiers Git' }).fill('README');
+  await expect(git.locator('.git-change-row')).toHaveCount(1);
   await git.locator('.git-change-path').filter({ hasText: 'README.md' }).click();
   await expect(git.getByRole('tab', { name: /README.md · diff/ })).toBeVisible();
   await git.getByRole('button', { name: 'Vue d’ensemble', exact: true }).click();
-  await expect(git.getByRole('heading', { name: 'Fichiers à relire' })).toBeVisible();
+  await expect(git.getByRole('textbox', { name: 'Filtrer les fichiers Git' })).toBeVisible();
   await git.locator('.git-change-path').filter({ hasText: 'README.md' }).click();
   await git.getByRole('button', { name: 'Fermer le diff' }).click();
-  await expect(git.getByRole('heading', { name: 'Fichiers à relire' })).toBeVisible();
+  await expect(git.getByRole('textbox', { name: 'Filtrer les fichiers Git' })).toBeVisible();
 
   await navigation.getByRole('button', { name: 'Fichiers', exact: true }).click();
   await expect(files.getByRole('tab', { name: 'README.md', exact: true })).toBeVisible();
@@ -32,24 +34,57 @@ test('chaque destination possède sa page et les fichiers restent ouverts', asyn
   await expect(files.getByRole('heading', { name: /Les fichiers de/ })).toBeVisible();
 });
 
-test('la recherche a son accueil, ses résultats et un aperçu qui conserve la requête', async ({ page }) => {
+test('la recherche de contenu reste à côté des fichiers et conserve la requête', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  const search = page.getByRole('region', { name: 'Recherche dans le projet' });
-  await expect(search.getByRole('heading', { name: 'Du détail à l’ensemble.' })).toBeVisible();
-  await search.getByRole('checkbox', { name: 'Noms de fichiers uniquement' }).check();
-  await search.getByRole('textbox', { name: 'Rechercher dans le projet' }).fill('App.tsx');
-  await search.getByRole('button', { name: /src\/App.tsx/ }).click();
-  const preview = page.getByRole('region', { name: 'Volet de code' });
-  await expect(preview.getByRole('tab', { name: 'App.tsx', exact: true })).toBeVisible();
-  await expect(search.getByRole('textbox')).toHaveValue('App.tsx');
-  await preview.getByRole('button', { name: 'Fermer le volet de code' }).click();
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' }).getByRole('button', { name: 'Rechercher', exact: true })).toHaveCount(0);
+  await page.keyboard.press('Control+Shift+f');
+  const search = page.getByRole('region', { name: 'Recherche dans les fichiers' });
+  const input = search.getByRole('textbox', { name: 'Rechercher dans le contenu' });
+  await expect(input).toBeFocused();
+  await input.fill('Bienvenue');
+  await search.getByRole('button', { name: 'src/App.tsx, ligne 4', exact: true }).click();
+  const files = page.getByRole('region', { name: 'Fichiers du projet' });
+  await expect(files.getByRole('tab', { name: 'App.tsx', exact: true })).toBeVisible();
+  await expect(files.locator('.monaco-editor')).toBeVisible();
+  const resultLine = files.locator('.view-lines .view-line').filter({ hasText: 'Bienvenue' });
+  await expect(resultLine).toBeVisible();
+  await expect.poll(() => files.locator('.editor-surface').evaluate(root => {
+    const row = Array.from(root.querySelectorAll('.view-lines .view-line')).find(element => element.textContent?.includes('Bienvenue'));
+    const selected = root.querySelector('.view-overlays .current-line')?.parentElement;
+    return !!row && !!selected && Math.abs(row.getBoundingClientRect().top - selected.getBoundingClientRect().top) < 1;
+  })).toBe(true);
+  await resultLine.click();
+  await page.keyboard.press('Control+Shift+f');
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Bienvenue');
+  await page.getByRole('button', { name: 'Arborescence', exact: true }).click();
+  await expect(search).toHaveCount(0);
+  await page.getByRole('button', { name: 'Contenu', exact: true }).click();
+  await expect(input).toHaveValue('Bienvenue');
   await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
   await expect(search).toHaveCount(0);
   await expect(page.locator('.agent-home')).toBeVisible();
-  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await expect(search.getByRole('textbox')).toHaveValue('App.tsx');
+  await page.keyboard.press('Control+Shift+f');
+  await expect(input).toHaveValue('Bienvenue');
+  await page.reload();
+  await expect(input).toHaveValue('Bienvenue');
   await search.getByRole('button', { name: 'Effacer la recherche' }).click();
-  await expect(search.getByRole('heading', { name: 'Du détail à l’ensemble.' })).toBeVisible();
   await expect(search.locator('.search-result-group')).toHaveCount(0);
+  await input.fill('aucune-correspondance-123');
+  await expect(search.getByText('Aucune correspondance.', { exact: true })).toBeVisible();
+});
+
+test('Ctrl+P ouvre un fichier par son nom dans les fichiers', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('.agent-home')).toBeVisible();
+  await page.keyboard.press('Control+p');
+  const palette = page.getByRole('dialog', { name: 'Fichiers et actions' });
+  await palette.getByRole('textbox', { name: 'Fichier ou action' }).fill('App.tsx');
+  await expect(palette.getByRole('button', { name: 'src/App.tsx', exact: true })).toBeVisible();
+  await palette.getByRole('textbox').press('Enter');
+  await expect(palette).toHaveCount(0);
+  await expect(page.getByRole('region', { name: 'Fichiers du projet' }).getByRole('tab', { name: 'App.tsx', exact: true })).toBeVisible();
+  await page.locator('.editor-surface .view-line').first().click();
+  await page.keyboard.press('Control+p');
+  await expect(palette).toBeVisible();
 });

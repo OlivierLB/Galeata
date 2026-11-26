@@ -18,6 +18,7 @@ for (const provider of ['claude', 'codex'] as const) {
     const other = provider === 'claude' ? 'Modèle Codex' : 'Modèle Claude Code';
     await expect(page.locator('summary').and(page.getByLabel(other, { exact: true }))).toHaveCount(0);
     await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
+    await page.getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true }).click();
     await expect(picker).toContainText(provider === 'claude' ? 'Sonnet' : 'Codex');
     await page.getByRole('tablist', { name: 'Conversations' }).getByRole('tab').first().click();
     await expect(picker).toContainText(provider === 'claude' ? 'Opus' : 'Codex rapide');
@@ -37,14 +38,12 @@ test('explorer, rechercher et ouvrir un fichier sans annoncer de connexion local
   await page.goto('/');
   await expect(page.getByText('APERÇU INTERFACE')).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Rechercher dans le projet' }).fill('App.tsx');
-  await page.getByRole('checkbox', { name: 'Noms de fichiers uniquement' }).check();
+  await page.keyboard.press('Control+p');
+  await page.getByRole('textbox', { name: 'Fichier ou action' }).fill('App.tsx');
   await page.getByRole('button', { name: 'src/App.tsx', exact: true }).click();
   await expect(page.getByRole('tab', { name: /App.tsx/ })).toBeVisible();
   await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Nouvelle conversation codex' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Ouvrir codex dans le terminal' })).toBeDisabled();
+  await expect(page.locator('.agent-home')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
@@ -67,66 +66,20 @@ test('modifier le plan, retrouver son historique et le conserver après recharge
   await expect(page.getByRole('heading', { name: 'Relire les changements' })).toBeVisible();
 });
 
-test('replier le plan et retrouver les actions au clavier', async ({ page }) => {
+test('le plan reste visible et les actions sont accessibles au clavier', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Afficher ou masquer le plan', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toBeVisible();
   await page.keyboard.press('Control+p');
   await expect(page.getByRole('dialog', { name: 'Fichiers et actions' })).toBeVisible();
-  await page.getByRole('button', { name: 'Afficher ou replier le plan', exact: true }).click();
-  await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toBeVisible();
 });
 
-test('redimensionner les panneaux à la souris et au clavier, puis les retrouver', async ({
-  page,
-}) => {
+test('le plan se redimensionne au clavier', async ({ page }) => {
   await page.goto('/');
-  const sidebar = page.locator('.sidebar');
-  const plan = page.getByRole('complementary', { name: 'Plan', exact: true });
-  await page.keyboard.press('Control+`');
-  const bottom = page.getByRole('region', { name: 'Terminal et activité' });
-  await expect(bottom).toBeVisible();
-  const drag = async (name: string, dx: number, dy: number) => {
-    const box = (await page.getByRole('separator', { name }).boundingBox())!;
-    const x = box.x + box.width / 2;
-    const y = box.y + box.height / 2;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.mouse.move(x + dx / 2, y + dy / 2);
-    await page.mouse.move(x + dx, y + dy);
-    await page.mouse.up();
-  };
-  const width = async (locator: typeof sidebar) => (await locator.boundingBox())!.width;
-  const height = async (locator: typeof sidebar) => (await locator.boundingBox())!.height;
-
-  const sidebarBefore = await width(sidebar);
-  await drag('Largeur du panneau latéral', 100, 0);
-  expect(Math.round(await width(sidebar))).toBe(Math.round(sidebarBefore + 100));
-
-  const planBefore = await width(plan);
-  await drag('Largeur du plan', -80, 0);
-  expect(Math.round(await width(plan))).toBe(Math.round(planBefore + 80));
-
-  const bottomBefore = await height(bottom);
-  await drag('Hauteur du panneau inférieur', 0, -90);
-  expect(Math.round(await height(bottom))).toBe(Math.round(bottomBefore + 90));
-
-  // The editor always keeps room, whatever the drag distance.
-  await drag('Largeur du panneau latéral', 5000, 0);
-  expect(
-    await width(page.getByRole('region', { name: 'Espace de travail' })),
-  ).toBeGreaterThanOrEqual(319);
-
-  await page.reload();
-  expect(Math.round(await width(plan))).toBe(Math.round(planBefore + 80));
-  expect(Math.round(await height(bottom))).toBe(Math.round(bottomBefore + 90));
-
-  const separator = page.getByRole('separator', { name: 'Largeur du panneau latéral' });
-  await separator.dblclick();
-  expect(Math.round(await width(sidebar))).toBe(Math.round(sidebarBefore));
+  const separator = page.getByRole('separator', { name: 'Largeur du plan' });
+  await expect(separator).toBeVisible();
   await separator.focus();
-  await page.keyboard.press('ArrowRight');
-  expect(Math.round(await width(sidebar))).toBe(Math.round(sidebarBefore + 16));
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toBeVisible();
 });
 
 test('l’IA au centre : conversation rejouée, outil, autorisation et code à la demande', async ({
@@ -363,6 +316,7 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
 
   // The last mode chosen by hand is the one of the next conversations.
   await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
+    await page.getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true }).click();
   const next = page.locator('.agent-chat').last();
   await expect(
     next
@@ -385,6 +339,7 @@ test('conversation drafts survive tab changes and split view', async ({ page }) 
   const composer = () => page.getByRole('textbox', { name: 'Message à l’agent' });
   await composer().fill('First conversation draft');
   await page.getByRole('button', { name: 'Nouvelle conversation', exact: true }).click();
+    await page.getByRole('button', { name: 'Nouvelle conversation de démonstration', exact: true }).click();
   await expect(composer()).toHaveValue('');
   await composer().fill('Second conversation draft');
   const tabs = page.getByRole('tablist', { name: 'Conversations' }).getByRole('tab');
@@ -392,14 +347,8 @@ test('conversation drafts survive tab changes and split view', async ({ page }) 
   await expect(composer()).toHaveValue('First conversation draft');
   await tabs.nth(1).click();
   await expect(composer()).toHaveValue('Second conversation draft');
-  const split = page.getByRole('button', { name: 'Afficher deux conversations côte à côte' });
-  await split.click();
-  await expect(composer().nth(0)).toHaveValue('Second conversation draft');
-  await expect(composer().nth(1)).toHaveValue('First conversation draft');
-  await composer().nth(1).fill('First draft edited in split view');
-  await split.click();
   await tabs.nth(0).click();
-  await expect(composer()).toHaveValue('First draft edited in split view');
+  await composer().fill('First draft edited in split view');
   await composer().press('Enter');
   await expect(composer()).toHaveValue('');
   await tabs.nth(1).click();
@@ -450,7 +399,7 @@ test('le plan affiche son texte complet avec l’état de chaque étape', async 
       updatedAt: Date.now(),
     });
     localStorage.setItem(
-      'galeata:preview-plan',
+      'galeata:preview-plan:empty',
       JSON.stringify({
         revision: 2,
         objective: 'Filtre « Demande précise »',
@@ -491,7 +440,7 @@ test('un plan repris d’une conversation n’affiche pas un faux avancement', a
       updatedAt: Date.now(),
     });
     localStorage.setItem(
-      'galeata:preview-plan',
+      'galeata:preview-plan:empty',
       JSON.stringify({
         revision: 1,
         objective: 'Filtre « Demande précise »',

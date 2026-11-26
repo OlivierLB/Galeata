@@ -2,7 +2,14 @@ use crate::{store::Result, State};
 use serde_json::{json, Value};
 use std::sync::Arc;
 
+fn definitions() -> &'static Value {
+    static TOOLS: std::sync::OnceLock<Value> = std::sync::OnceLock::new();
+    TOOLS.get_or_init(build_tools)
+}
 pub fn tools() -> Value {
+    definitions().clone()
+}
+fn build_tools() -> Value {
     let string = json!({"type":"string"});
     let integer = json!({"type":"integer","minimum":0});
     let definitions=vec![
@@ -15,7 +22,7 @@ pub fn tools() -> Value {
         ("plan.update_step","Mettre à jour une étape existante sans changer son objectif. done indique une déclaration de l’agent, pas une vérification.",json!({"revision":integer,"id":string,"status":{"type":"string","enum":["pending","in_progress","blocked","done"]},"note":string}),vec!["revision","id","status"]),
         ("plan.set","Fixer l’objectif, les étapes et, si vous l’avez rédigé, le plan détaillé (document, markdown) affichés à l’utilisateur, dans sa langue. Les étapes inchangées gardent leur état.",json!({"revision":integer,"objective":string,"document":string,"steps":{"type":"array","items":{"type":"object","properties":{"id":string,"title":string,"status":{"type":"string","enum":["pending","in_progress","blocked","done"]}},"required":["title"]}}}),vec!["revision","objective","steps"]),
         ("plan.propose_change","Proposer un changement de périmètre à valider dans Galeata",json!({"revision":integer,"reason":string,"objective":string,"steps":{"type":"array","items":{"type":"object"}}}),vec!["revision","reason","objective","steps"]),
-        ("activity.report","Déclarer une activité, un blocage ou une mission de sous-agent",json!({"message":string,"sessionId":string,"parentId":string,"stepId":string,"status":{"type":"string","enum":["running","blocked","done"]},"files":{"type":"array","items":string}}),vec!["message","sessionId","status"]),
+        ("activity.report","Déclarer une activité, un blocage ou une mission de sous-agent",json!({"message":string,"sessionId":string,"parentId":string,"initialPrompt":string,"name":string,"tasks":{"type":"array","items":string},"stepId":string,"status":{"type":"string","enum":["running","blocked","done"]},"files":{"type":"array","items":string}}),vec!["message","sessionId","status"]),
         ("verification.record","Rapporter une vérification avec provenance agent_reported",json!({"message":string,"stepId":string,"command":string,"exitCode":{"type":"integer"},"sessionId":string}),vec!["message","command","exitCode"]),
         ("session.save_handoff","Enregistrer une passation pour reprendre le travail",json!({"message":string,"sessionId":string,"nextAction":string,"stepId":string}),vec!["message","sessionId","nextAction"]),
         ("ui.open_file","Présenter un fichier à l’utilisateur",json!({"path":string,"line":{"type":"integer","minimum":1}}),vec!["path"]),
@@ -42,7 +49,7 @@ pub fn response(request: &Value, call: impl FnOnce(&str, Value) -> Result<Value>
         "tools/list" => Ok(json!({"tools":tools()})),
         "tools/call" => {
             let name = request["params"]["name"].as_str().unwrap_or("");
-            if !tools()
+            if !definitions()
                 .as_array()
                 .unwrap()
                 .iter()
@@ -54,7 +61,7 @@ pub fn response(request: &Value, call: impl FnOnce(&str, Value) -> Result<Value>
                     .get("arguments")
                     .cloned()
                     .unwrap_or(json!({}));
-                let schema = tools();
+                let schema = definitions();
                 let definition = schema
                     .as_array()
                     .unwrap()
@@ -158,7 +165,10 @@ pub fn serve(app: tauri::AppHandle, state: Arc<State>) -> Result<()> {
                                         .into(),
                                 );
                             }
-                            Ok(response(&envelope["request"], |method, args| {
+                            Ok(response(&envelope["request"], |method, mut args| {
+                                if let Some(id) = envelope["conversationId"].as_str() {
+                                    args["conversationId"] = json!(id);
+                                }
                                 state.dispatch(&app, method, args, true)
                             })
                             .unwrap_or(Value::Null))

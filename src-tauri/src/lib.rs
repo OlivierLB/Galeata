@@ -1,4 +1,7 @@
 mod agents;
+mod check_runner;
+mod checks;
+mod diagnostics;
 mod git;
 mod mcp;
 mod remote;
@@ -6,6 +9,7 @@ mod sessions;
 mod skills;
 pub mod store;
 mod terminal;
+mod tool_config;
 pub mod workspace;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -26,6 +30,7 @@ pub struct State {
     pub store: Store,
     pub terminals: terminal::Terminals,
     pub agents: agents::Agents,
+    pub checks: Arc<check_runner::Runner>,
     pub socket: PathBuf,
     watcher: Mutex<Option<RecommendedWatcher>>,
     files_lock: Mutex<()>,
@@ -49,7 +54,34 @@ impl State {
         args: Value,
         agent: bool,
     ) -> Result<Value> {
+        let mut diagnostic = diagnostics::Span::new(method);
+        let result = self.dispatch_inner(app, method, args, agent);
+        diagnostic.complete(result.as_ref().map(|_| ()).map_err(|error| error.as_str()));
+        result
+    }
+    fn dispatch_inner(
+        &self,
+        app: &tauri::AppHandle,
+        method: &str,
+        args: Value,
+        agent: bool,
+    ) -> Result<Value> {
         let w = self.current()?;
+        let plan_scope = if let Some(id) = args["conversationId"].as_str() {
+            if id == "empty" {
+                format!("{}:empty", w.id)
+            } else {
+                self.agents
+                    .lock()
+                    .map_err(|e| e.to_string())?
+                    .get(id)
+                    .filter(|running| running.workspace == w.id)
+                    .map(|running| running.plan_scope.clone())
+                    .ok_or("Conversation inconnue")?
+            }
+        } else {
+            w.id.clone()
+        };
         let author = if agent { "agent:mcp" } else { "vous" };
         let expected = || {
             args["revision"]
@@ -57,6 +89,60 @@ impl State {
                 .ok_or("Révision requise".to_string())
         };
         match method {
+            "tools.config.list" if !agent => tool_config::list(&w, required(&args, "provider")?),
+            "tools.config.read" if !agent => {
+                tool_config::load(&w, required(&args, "provider")?, required(&args, "id")?)
+            }
+            "tools.config.write" if !agent => {
+                let _guard = self.files_lock.lock().map_err(|e| e.to_string())?;
+                tool_config::write(
+                    &w,
+                    required(&args, "provider")?,
+                    required(&args, "id")?,
+                    required(&args, "content")?,
+                    required(&args, "stamp")?,
+                )
+            }
+            "checks.catalog" if !agent => {
+                checks::catalogue(&w, &self.store.preference(&w.id, "checks")?)
+            }
+            "checks.configure" if !agent => {
+                if args.to_string().len() > 256 * 1024 {
+                    return Err("Configuration trop volumineuse".into());
+                }
+                if let Some(custom) = args["custom"].as_array() {
+                    if custom.len() > 64 {
+                        return Err("Limite de 64 contrôles personnalisés".into());
+                    }
+                    for item in custom {
+                        let check: checks::Check =
+                            serde_json::from_value(item.clone()).map_err(|e| e.to_string())?;
+                        checks::validate(&w, &check)?;
+                    }
+                }
+                self.store.set_preference(&w.id, "checks", &args)?;
+                Ok(Value::Null)
+            }
+            "checks.start" if !agent => check_runner::start(app, &w, &args),
+            "checks.status" if !agent => self.checks.status(
+                &w.id,
+                if args["refresh"] == false {
+                    vec![]
+                } else {
+                    check_runner::history(self, &w.id)
+                },
+            ),
+            "checks.output" if !agent => self.checks.output(
+                &w.id,
+                required(&args, "id")?,
+                required(&args, "checkId")?,
+                if self.checks.has_run(&w.id, required(&args, "id")?) {
+                    vec![]
+                } else {
+                    check_runner::history(self, &w.id)
+                },
+            ),
+            "checks.cancel" if !agent => self.checks.cancel(&w.id, required(&args, "id")?),
             "workspace.context" | "workspace.get_context" => {
                 let instructions = ["AGENTS.md", "CLAUDE.md"]
                     .iter()
@@ -67,7 +153,7 @@ impl State {
                     })
                     .collect::<Vec<_>>();
                 Ok(
-                    json!({"workspace":w,"git":git::status(&w)?,"plan":self.store.plan(&w.id)?,"instructions":instructions}),
+                    json!({"workspace":w,"git":git::status(&w)?,"plan":self.store.plan(&plan_scope)?,"instructions":instructions}),
                 )
             }
             "workspace.list" => w.list(
@@ -131,10 +217,10 @@ impl State {
                 method.ends_with("files"),
                 args["offset"].as_u64().unwrap_or(0) as usize,
             ),
-            "plan.get" => self.store.plan(&w.id),
+            "plan.get" => self.store.plan(&plan_scope),
             "plan.save" if !agent => {
                 let result = self.store.update_plan(
-                    &w.id,
+                    &plan_scope,
                     expected()?,
                     args["plan"].clone(),
                     author,
@@ -156,7 +242,7 @@ impl State {
                     })
                     .collect::<Vec<_>>();
                 let result = self.store.set_plan_document(
-                    &w.id,
+                    &plan_scope,
                     Some(expected()?),
                     required(&args, "objective")?,
                     &steps,
@@ -169,7 +255,7 @@ impl State {
                 Ok(result)
             }
             "plan.update_step" => {
-                let mut plan = self.store.plan(&w.id)?;
+                let mut plan = self.store.plan(&plan_scope)?;
                 let id = required(&args, "id")?;
                 let status = required(&args, "status")?;
                 let step = plan["steps"]
@@ -190,7 +276,7 @@ impl State {
                     body.remove("proposedAt");
                 }
                 let result = self.store.update_plan(
-                    &w.id,
+                    &plan_scope,
                     expected()?,
                     plan,
                     author,
@@ -201,14 +287,14 @@ impl State {
             }
             "plan.propose_change" => {
                 let revision = expected()?;
-                if self.store.plan(&w.id)?["revision"] != revision {
+                if self.store.plan(&plan_scope)?["revision"] != revision {
                     return Err(
                         "REVISION_CONFLICT: relisez le plan avant de proposer un changement".into(),
                     );
                 }
                 let proposal = json!({"objective":args["objective"],"steps":args["steps"],"baseRevision":revision});
                 let event = self.store.record(
-                    &w.id,
+                    &plan_scope,
                     "proposal",
                     author,
                     required(&args, "reason")?,
@@ -217,7 +303,15 @@ impl State {
                 let _ = app.emit("activity:changed", json!({"workspaceId":w.id}));
                 Ok(event)
             }
-            "activity.list" => self.store.events(&w.id),
+            "activity.list" => {
+                let mut events = self.store.events(&w.id)?;
+                if args["conversationId"].is_string() {
+                    if let Some(items) = events.as_array_mut() {
+                        items.retain(|event| event["data"]["conversationScope"] == plan_scope);
+                    }
+                }
+                Ok(events)
+            }
             "activity.report" | "verification.record" | "session.save_handoff" => {
                 let kind = if method == "verification.record" {
                     "verification"
@@ -227,6 +321,9 @@ impl State {
                     "activity"
                 };
                 let mut data = args.clone();
+                if args["conversationId"].is_string() {
+                    data["conversationScope"] = json!(plan_scope);
+                }
                 data["provenance"] = json!(if agent {
                     "agent_reported"
                 } else {
@@ -469,11 +566,23 @@ async fn open_workspace(app: tauri::AppHandle, path: String) -> Result<Value> {
     tauri::async_runtime::spawn_blocking(move||{
         let w=Workspace::open(&path)?;let state=app.state::<Arc<State>>();let _gate=state.workspace_gate.write().map_err(|e|e.to_string())?;
         // Existing agents stay associated with their old workspace. Close before switching.
+        if state.checks.is_running() { return Err("Attendez ou annulez les contrôles avant de changer de projet".into()); }
         if !state.terminals.lock().map_err(|e|e.to_string())?.is_empty()||agents::any_alive(&state.agents){return Err("Fermez les terminaux et conversations d’agents avant de changer de dossier".into())}
         let event_app=app.clone();let workspace_id=w.id.clone();let last=Arc::new(Mutex::new(std::time::Instant::now()-Duration::from_secs(1)));
+        let watched_root = w.root.clone();
+        let checks_revision = state.checks.clone();
+        checks_revision.revision.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
         let mut watcher = notify::recommended_watcher(move |event: std::result::Result<notify::Event, notify::Error>| {
             if let Ok(event) = event {
                 if !workspace_event_changes_files(&event) { return; }
+                // Build/dependency output must not trigger Git and editor refresh storms.
+                if !event.paths.is_empty() && event.paths.iter().all(|path| {
+                    path.strip_prefix(&watched_root).ok().is_some_and(|relative| {
+                        relative.components().any(|part| matches!(part.as_os_str().to_str(),
+                            Some("node_modules" | "target" | "dist" | ".next" | ".cache" | "coverage" | "test-results" | "playwright-report" | "__pycache__" | ".pytest_cache" | ".mypy_cache" | ".ruff_cache" | ".venv")))
+                    })
+                }) { return; }
+                checks_revision.revision.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
                 if let Ok(mut instant) = last.lock() {
                     if instant.elapsed() > Duration::from_millis(200) {
                         *instant = std::time::Instant::now();
@@ -485,17 +594,50 @@ async fn open_workspace(app: tauri::AppHandle, path: String) -> Result<Value> {
         let watched=match watcher.watch(&w.root,RecursiveMode::Recursive){Ok(())=>Some(watcher),Err(error)=>{let _=state.store.record(&w.id,"capability","galeata","Surveillance des fichiers indisponible : actualisez Git et l’arborescence manuellement",json!({"reason":error.to_string()}));None}};
         *state.watcher.lock().map_err(|e|e.to_string())?=watched;
         *state.workspace.lock().map_err(|e|e.to_string())?=Some(w.clone());
+        if let Some(window) = app.get_webview_window("main") { let _ = window.set_title(&format!("{} — Galeata", w.name)); }
         Ok(json!(w))
     }).await.map_err(|e|e.to_string())?
+}
+
+#[tauri::command]
+fn startup_project() -> Option<String> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if arg == "--project" {
+            return args.next();
+        }
+    }
+    None
+}
+
+#[tauri::command]
+fn open_project_window(path: String) -> Result<()> {
+    let workspace = Workspace::open(&path)?;
+    let executable = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut child = std::process::Command::new(executable)
+        .arg("--project")
+        .arg(&workspace.root)
+        .spawn()
+        .map_err(|e| format!("Impossible d’ouvrir la fenêtre : {e}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![request, open_workspace])
+        .invoke_handler(tauri::generate_handler![
+            request,
+            open_workspace,
+            startup_project,
+            open_project_window
+        ])
         .setup(|app| {
             let directory = app.path().app_data_dir()?;
             fs::create_dir_all(&directory)?;
+            diagnostics::init(directory.join("diagnostics"));
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -508,6 +650,7 @@ pub fn run() {
                     .map_err(std::io::Error::other)?,
                 terminals: Arc::new(Mutex::new(HashMap::new())),
                 agents: Mutex::new(HashMap::new()),
+                checks: Arc::new(check_runner::Runner::default()),
                 socket,
                 watcher: Mutex::new(None),
                 files_lock: Mutex::new(()),
@@ -521,7 +664,9 @@ pub fn run() {
         .expect("Impossible de démarrer Galeata");
     app.run(|handle, event| {
         if matches!(event, tauri::RunEvent::Exit) {
+            diagnostics::record("exit", 0, true);
             let state = handle.state::<Arc<State>>();
+            state.checks.cancel_all();
             if let Ok(mut terminals) = state.terminals.lock() {
                 for (_, mut terminal) in terminals.drain() {
                     let _ = terminal.killer.kill();

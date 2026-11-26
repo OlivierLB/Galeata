@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { readProjectSession, saveProjectSession } from '../projectSession.ts';
 import { request } from '../api.ts';
 import type { Entry } from '../types.ts';
 import { Icon } from './Icon.tsx';
@@ -16,10 +17,21 @@ export function FileTree({
   onOpen: (path: string) => void;
   onError: (error: unknown) => void;
 }) {
+  const [expanded, setExpanded] = useState<Set<string>>(() => {
+    const saved = readProjectSession(workspaceId).expanded;
+    return new Set(Array.isArray(saved) ? saved.filter(path => typeof path === 'string') : ['src']);
+  });
+  const toggle = (path: string) => setExpanded(previous => {
+    const next = new Set(previous);
+    if (next.has(path)) next.delete(path); else next.add(path);
+    try { saveProjectSession(workspaceId, { expanded: [...next] }); } catch (error) { onError(error); }
+    return next;
+  });
   return (
     <div className="file-tree" role="tree" aria-label="Fichiers du projet">
       <Directory
         key={workspaceId}
+        expanded={expanded} onToggle={toggle}
         path=""
         depth={0}
         revision={revision}
@@ -31,6 +43,7 @@ export function FileTree({
   );
 }
 function Directory({
+  expanded, onToggle,
   path,
   depth,
   revision,
@@ -38,6 +51,7 @@ function Directory({
   onOpen,
   onError,
 }: {
+  expanded: Set<string>; onToggle: (path: string) => void;
   path: string;
   depth: number;
   revision: number;
@@ -46,7 +60,6 @@ function Directory({
   onError: (error: unknown) => void;
 }) {
   const [entries, setEntries] = useState<Entry[]>([]);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(depth === 0 ? ['src'] : []));
   const [nextOffset, setNextOffset] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
@@ -94,12 +107,7 @@ function Directory({
             style={{ paddingLeft: 12 + depth * 15 }}
             onClick={() =>
               entry.directory
-                ? setExpanded((previous) => {
-                    const next = new Set(previous);
-                    if (next.has(entry.path)) next.delete(entry.path);
-                    else next.add(entry.path);
-                    return next;
-                  })
+                ? onToggle(entry.path)
                 : onOpen(entry.path)
             }
             title={entry.path}
@@ -119,25 +127,16 @@ function Directory({
               <span
                 className={`file-type ${entry.name.endsWith('.rs') ? 'rust' : entry.name.endsWith('.md') ? 'markdown' : ''}`}
               >
-                {entry.name.endsWith('.tsx')
-                  ? '✳'
-                  : entry.name.endsWith('.ts')
-                    ? 'TS'
-                    : entry.name.endsWith('.rs')
-                      ? 'Rs'
-                      : entry.name.endsWith('.json')
-                        ? '{}'
-                        : entry.name.endsWith('.md')
-                          ? 'M↓'
-                          : '·'}
+                <Icon name={/\.(tsx?|rs|json|css|html)$/.test(entry.name) ? "file-code" : "files"} size={14} />
               </span>
             )}
             <span className="truncate">{entry.name}</span>
-            {entry.symlink ? <span className="muted">↗</span> : null}
+            {entry.symlink ? <Icon name="arrow-ne" size={12} className="muted" /> : null}
           </button>
           {entry.directory && expanded.has(entry.path) ? (
             <div role="group">
               <Directory
+                expanded={expanded} onToggle={onToggle}
                 path={entry.path}
                 depth={depth + 1}
                 revision={revision}

@@ -1,3 +1,4 @@
+import '../doodle-monaco.css';
 import { useEffect, useRef } from 'react';
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
@@ -56,6 +57,7 @@ export default function EditorSurface({
   onChange,
   onSave,
   line,
+  revealRequest,
 }: {
   file: OpenFile;
   /** With `editable`, the right side is the working file: changes and Ctrl+S apply to it. */
@@ -63,6 +65,7 @@ export default function EditorSurface({
   onChange: (content: string) => void;
   onSave: () => void;
   line?: number;
+  revealRequest?: number;
 }) {
   const container = useRef<HTMLDivElement>(null);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -146,6 +149,6 @@ export default function EditorSurface({
       editorRef.current.revealLineInCenter(line);
       editorRef.current.setPosition({ lineNumber: line, column: 1 });
     }
-  }, [line]);
+  }, [line, revealRequest]);
   return <div className="editor-surface" ref={container} aria-label={`Éditeur ${file.path}`} />;
 }

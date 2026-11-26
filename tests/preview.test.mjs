@@ -55,3 +55,11 @@ test('les résultats du plan ne permettent pas de muter le stockage sans sauvega
   assert.notEqual((await request('plan.get')).objective, plan.objective);
   setActiveWorkspace(null);
 });
+
+test('chaque conversation conserve son propre plan', async () => {
+  await openWorkspace();
+  const first = await request('plan.get', { conversationId: 'a' });
+  await request('plan.save', { conversationId: 'a', revision: first.revision, plan: { ...first, objective: 'Plan A' } });
+  assert.equal((await request('plan.get', { conversationId: 'b' })).objective, '');
+  assert.equal((await request('plan.get', { conversationId: 'a' })).objective, 'Plan A');
+});

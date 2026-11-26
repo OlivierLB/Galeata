@@ -61,7 +61,7 @@ fn main() {
             writeln!(
                 stream,
                 "{}",
-                json!({"workspaceId":workspace,"request":request})
+                json!({"workspaceId":workspace,"conversationId":value("--conversation"),"request":request})
             )
             .map_err(|e| e.to_string())?;
             let mut reply = String::new();
