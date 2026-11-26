@@ -114,7 +114,7 @@ export default function App() {
     editable: boolean;
   } | null>(null);
   const [treeRevision, setTreeRevision] = useState(0);
-  const planVisible = true;
+  const planVisible = panel === 'agents';
   const [bottomVisible, setBottomVisible] = useState(
     () => localStorage.getItem('galeata:bottom-visible') === 'true',
   );
@@ -1676,7 +1676,7 @@ export default function App() {
             </section>
           ) : null}
         </section>
-        {planVisible && workspace ? (
+        {planShown ? (
           <Splitter
             label="Largeur du plan"
             orientation="vertical"
@@ -1691,7 +1691,7 @@ export default function App() {
             onReset={() => setPlanWidth(planDefault)}
           />
         ) : null}
-        {planVisible && workspace ? (
+        {planShown ? (
           <PlanPanel
             width={planWidth}
             plan={plan}
