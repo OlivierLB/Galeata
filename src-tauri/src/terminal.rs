@@ -48,6 +48,16 @@ pub fn start(
             c
         }
         "codex" | "claude" => CommandBuilder::new(kind),
+        "codex-login" => {
+            let mut c = CommandBuilder::new("codex");
+            c.arg("login");
+            c
+        }
+        "claude-login" => {
+            let mut c = CommandBuilder::new("claude");
+            c.args(["auth", "login"]);
+            c
+        }
         _ => return Err("Outil inconnu".into()),
     };
     let bridge = bridge_path(&app)?;

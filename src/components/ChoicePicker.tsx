@@ -1,3 +1,4 @@
+import { Icon } from './Icon.tsx';
 import { useEffect, useRef } from 'react';
 
 export interface Choice { id: string; label: string; hint?: string; danger?: boolean; disabled?: boolean }
@@ -43,7 +44,7 @@ export function ChoicePicker({ label, title, value, options, fallback = 'Choisir
     }}>
     <summary ref={trigger} aria-label={label} aria-disabled={disabled || undefined} title={title}
       onClick={event => { if (disabled) event.preventDefault(); }}>
-      {options.find(option => option.id === value)?.label ?? fallback}<span aria-hidden="true">⌄</span>
+      {options.find(option => option.id === value)?.label ?? fallback}<Icon name="arrow-single-down" size={12} />
     </summary>
     <ChoiceGroup className="mode-switch" label={label} value={value}
       options={options.map(option => ({ ...option, disabled: disabled || option.disabled }))}

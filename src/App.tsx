@@ -1,8 +1,14 @@
-import { ChoiceGroup } from './components/ChoicePicker.tsx';
+import ChecksDialog from './components/checks/ChecksDialog.tsx';
+import ChecksStatusButton from './components/checks/ChecksStatusButton.tsx';
+import { latestMissions } from './components/AgentMonitor.tsx';
+import { readProjectSession, saveProjectSession, restoreProjectConversations, type EditorLayout } from './projectSession.ts';
+import { CountBadge } from './components/CountBadge.tsx';
+import AgentCountBadge from './components/AgentCountBadge.tsx';
+import PreferencesDialog from './components/preferences/PreferencesDialog.tsx';
 import { applyTheme, readTheme, type Theme } from './theme.ts';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { desktop, getActiveWorkspace, openWorkspace, request, subscribe } from './api.ts';
-import { languageFor, relativeTime } from './domain.ts';
+import { desktop, getActiveWorkspace, openWorkspace, startupProject, request, subscribe } from './api.ts';
+import { languageFor } from './domain.ts';
 import type {
   Activity,
   GitStatus,
@@ -22,19 +28,17 @@ import Dialog, { type DialogSpec } from './components/Dialog.tsx';
 import type { TerminalLaunch } from './components/TerminalView.tsx';
 import Splitter, { usePanelSize } from './components/Splitter.tsx';
 import AgentWorkspace from './components/AgentWorkspace.tsx';
-import { FilesHome, SearchPage, GitOverview } from './components/WorkspacePages.tsx';
+import { FilesHome, FileSearch, GitOverview } from './components/WorkspacePages.tsx';
+import ToolConfiguration from './components/ToolConfiguration.tsx';
 import GitManager, { GitToolbar, type GitTab } from './components/GitManager.tsx';
-import { sendToAgent, startAgent } from './agents/api.ts';
+import { sendToAgent } from './agents/api.ts';
 import { agentStore } from './agents/store.ts';
 import { mascot } from './mascot/store.ts';
 import TurtleMascot from './components/TurtleMascot.tsx';
-import { providerNames, type Provider as AgentProvider } from './agents/types.ts';
+import { type Provider as AgentProvider } from './agents/types.ts';
 import {
-  agentModes,
   readDefaultAgent,
-  readStartMode,
   writeDefaultAgent,
-  writeStartMode,
 } from './agents/preferences.ts';
 
 const EditorSurface = lazy(() =>
@@ -47,14 +51,12 @@ const wide = typeof window !== 'undefined' && window.innerWidth >= 1650;
 const sidebarBounds = { min: 180, max: 640 };
 const planBounds = { min: 240, max: 720 };
 const bottomBounds = { min: 90, max: 1200 };
-const codeBounds = { min: 320, max: 1600 };
-const codeDefault = 620;
 const sidebarDefault = wide ? 270 : 245;
 const planDefault = wide ? 345 : 315;
 const bottomDefault = 220;
 const editorMinWidth = 360; // the agent conversation keeps at least this width
 const editorMinHeight = 120;
-type Panel = 'files' | 'search' | 'git' | 'agents' | 'settings';
+type Panel = 'files' | 'git' | 'agents' | 'tools';
 type Bottom = 'terminal' | 'activity' | 'checks';
 interface TerminalTab {
   launch: TerminalLaunch;
@@ -63,23 +65,25 @@ interface TerminalTab {
 }
 const panelNames: Record<Panel, string> = {
   files: 'Explorateur',
-  search: 'Recherche',
   git: 'Contrôle de source',
   agents: 'Agents & sessions',
-  settings: 'Préférences',
+  tools: 'Outils IA',
 };
 const navigation: { id: Panel; icon: string; label: string }[] = [
   { id: 'files', icon: 'files', label: 'Fichiers' },
-  { id: 'search', icon: 'search', label: 'Rechercher' },
   { id: 'git', icon: 'git', label: 'Git' },
   { id: 'agents', icon: 'agents', label: 'Agents et sessions' },
+  { id: 'tools', icon: 'settings', label: 'Outils IA' },
 ];
 
 export default function App() {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [panel, setPanel] = useState<Panel>('agents');
+  const [toolsVisited, setToolsVisited] = useState(false);
   const [mascotAgent, setMascotAgent] = useState('');
+  const planConversation = useRef(mascotAgent);
+  planConversation.current = mascotAgent;
   const [plan, setPlan] = useState<Plan>(initialPlan);
   const previousPlan = useRef({ workspaceId: workspace?.id, plan: initialPlan });
   useEffect(() => {
@@ -99,6 +103,7 @@ export default function App() {
   tabsRef.current = tabs;
   const [active, setActive] = useState('');
   const [line, setLine] = useState<number>();
+  const [revealRequest, setRevealRequest] = useState(0);
   const [diff, setDiff] = useState<{
     path: string;
     original: string;
@@ -108,19 +113,14 @@ export default function App() {
     editable: boolean;
   } | null>(null);
   const [treeRevision, setTreeRevision] = useState(0);
-  const [planVisible, setPlanVisible] = useState(
-    () => localStorage.getItem('galeata:plan-visible') !== 'false',
-  );
+  const planVisible = true;
   const [bottomVisible, setBottomVisible] = useState(
     () => localStorage.getItem('galeata:bottom-visible') === 'true',
   );
   // Code is secondary: a right-hand panel opened on demand (file, diff, agent request).
-  const [codeVisible, setCodeVisible] = useState(false);
   const [defaultAgent, setDefaultAgent] = useState<AgentProvider>(readDefaultAgent);
-  const [startModes, setStartModes] = useState<Record<AgentProvider, string>>(() => ({
-    claude: readStartMode('claude'),
-    codex: readStartMode('codex'),
-  }));
+  const [preferencesOpen, setPreferencesOpen] = useState(false);
+  const [checksOpen, setChecksOpen] = useState(false);
   const layoutRef = useRef<HTMLElement>(null);
   const centralRef = useRef<HTMLElement>(null);
   const [sidebarWidth, setSidebarWidth] = usePanelSize(
@@ -129,7 +129,6 @@ export default function App() {
     sidebarBounds,
   );
   const [planWidth, setPlanWidth] = usePanelSize('galeata:plan-width', planDefault, planBounds);
-  const [codeWidth, setCodeWidth] = usePanelSize('galeata:code-width', codeDefault, codeBounds);
   const [bottomHeight, setBottomHeight] = usePanelSize(
     'galeata:bottom-height',
     bottomDefault,
@@ -141,10 +140,9 @@ export default function App() {
   const planShown = planVisible && !!workspace;
   const reviewing = panel === 'git' && !!workspace;
   const filesPage = panel === 'files' && !!workspace;
-  const agentPage = panel === 'agents' || panel === 'settings';
-  const codeShown = codeVisible && !!workspace && !reviewing && !filesPage;
+  const agentPage = panel === 'agents';
   function navigate(next: Panel) {
-    setCodeVisible(false);
+    if (next === 'tools') setToolsVisited(true);
     if (next === 'files') setDiff(null);
     setPanel(next);
   }
@@ -155,17 +153,21 @@ export default function App() {
   const [busy, setBusy] = useState('');
   const [dialog, setDialog] = useState<DialogSpec | null>(null);
   const [query, setQuery] = useState('');
-  const [searchFiles, setSearchFiles] = useState(false);
+  const [fileSearchVisible, setFileSearchVisible] = useState(false);
   const [hits, setHits] = useState<SearchHit[]>([]);
   const [searchNext, setSearchNext] = useState<number | null>(null);
   const [searching, setSearching] = useState(false);
-  const searchKey = `${workspace?.id}:${searchFiles}:${query}`;
+  const searchKey = `${workspace?.id}:${query}`;
   const searchKeyRef = useRef(searchKey);
   searchKeyRef.current = searchKey;
+  function openProjectSearch() {
+    setPalette(false);
+    setPanel('files'); setDiff(null); setFileSearchVisible(true);
+    requestAnimationFrame(() => document.getElementById('project-content-search')?.focus());
+  }
   const [commitMessage, setCommitMessage] = useState('');
   const [gitManager, setGitManager] = useState<GitTab | null>(null);
   const gitRunning = useRef(false);
-  const [mcpConfig, setMcpConfig] = useState<Record<string, unknown> | null>(null);
   const [palette, setPalette] = useState(false);
   const [paletteQuery, setPaletteQuery] = useState('');
   const [paletteHits, setPaletteHits] = useState<SearchHit[]>([]);
@@ -177,15 +179,16 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     const expected = getActiveWorkspace()?.id;
+    const conversationId = planConversation.current;
     if (!expected) return;
     const results = await Promise.allSettled([
-      request<Plan>('plan.get'),
+      request<Plan>('plan.get', { conversationId: conversationId || 'empty' }),
       request<GitStatus>('git.status'),
       request<Activity[]>('activity.list'),
     ]);
     if (getActiveWorkspace()?.id !== expected) return;
     const [p, g, a] = results;
-    if (p.status === 'fulfilled') setPlan(p.value);
+    if (p.status === 'fulfilled') { if (planConversation.current === conversationId) setPlan(p.value); }
     else error(p.reason);
     if (g.status === 'fulfilled') setGit(g.value);
     else error(g.reason);
@@ -210,7 +213,8 @@ export default function App() {
     async (path: string, targetLine?: number, reveal = true) => {
       setDiff(null);
       setLine(targetLine);
-      if (reveal) { setCodeVisible(true); mascot.react('file-opened'); }
+      setRevealRequest(value => value + 1);
+      if (reveal) { setPanel('files'); mascot.react('file-opened'); }
       if (tabsRef.current.some((file) => file.path === path)) {
         setActive(path);
         return;
@@ -279,7 +283,7 @@ export default function App() {
           if (editable) setActive(path);
         }
         setDiff({ path, ...result, staged, editable });
-          setCodeVisible(true);
+        setPanel('git');
       } catch (e) {
         error(e);
       }
@@ -293,7 +297,6 @@ export default function App() {
       try {
         const result = await openWorkspace(path);
         if (!result) return;
-        setWorkspace(result);
         setTabs([]);
         setActive('');
         setDiff(null);
@@ -302,52 +305,57 @@ export default function App() {
         setActivities([]);
         setPlan(initialPlan);
         setTerminals([]);
-        agentStore.clear();
-          setMcpConfig(null);
         setHits([]);
         setTreeRevision((value) => value + 1);
         await refresh();
         void loadSessions();
-        void request<{ openFiles?: string[]; activeFile?: string } | null>('preferences.get')
-          .then(async (layout) => {
-            if (layout?.openFiles?.length) {
-              for (const file of layout.openFiles.slice(0, 20))
-                await openFile(file, undefined, false);
-              if (layout.activeFile) setActive(layout.activeFile);
-            } else if (!desktop) await openFile('README.md', undefined, false);
-          })
-          .catch(error);
+        const saved = readProjectSession(result.id).editor;
+        const legacy = saved ? null : await request<{ openFiles?: string[]; activeFile?: string } | null>('preferences.get');
+        const paths = saved?.openFiles ?? legacy?.openFiles ?? (!desktop ? ['README.md'] : []);
+        const restored: OpenFile[] = [];
+        if (Array.isArray(paths)) for (const path of paths) {
+          if (typeof path !== 'string') continue;
+          try {
+            const file = await request<{ content: string; stamp: string }>('workspace.read', { path });
+            restored.push({ path, content: file.content, savedContent: file.content, stamp: file.stamp, language: languageFor(path) });
+          } catch (e) { error(e); }
+        }
+        setTabs(restored);
+        const selected = saved?.activeFile ?? legacy?.activeFile;
+        setActive(restored.some(file => file.path === selected) ? selected! : restored.at(-1)?.path ?? '');
+        if (saved) {
+          setPanel(saved.panel === 'search' ? 'files' : ['agents', 'files', 'git'].includes(saved.panel) ? saved.panel as Panel : 'agents');
+          setFileSearchVisible(saved.fileSearchVisible === true || saved.panel === 'search');
+          setBottomVisible(saved.bottomVisible === true);
+          if (['terminal', 'activity', 'checks'].includes(saved.bottom)) setBottom(saved.bottom as Bottom);
+          setQuery(typeof saved.query === 'string' ? saved.query : '');
+          if (saved.diff && typeof saved.diff.path === 'string') await showDiff(saved.diff.path, saved.diff.staged === true);
+          setSidebarWidth(saved.sidebarWidth);
+          setPlanWidth(saved.planWidth); setBottomHeight(saved.bottomHeight);
+        }
+        await restoreProjectConversations(result.id, error);
+        setWorkspace(result);
       } catch (e) {
         error(e);
       } finally {
         setBusy('');
       }
     },
-    [error, refresh, loadSessions, openFile],
+    [error, refresh, loadSessions, showDiff, setSidebarWidth, setPlanWidth, setBottomHeight],
   );
 
+  useEffect(() => {
+    void startupProject().then((path) => { if (path) void chooseWorkspace(path); }).catch(error);
+    // Startup arguments belong to this instance and are consumed once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function openPreferences() {
-    setPanel('settings');
-    // Modes chosen in conversations are remembered: show the current values.
-    setStartModes({ claude: readStartMode('claude'), codex: readStartMode('codex') });
-    if (workspace)
-      void request<Record<string, unknown>>('mcp.config').then(setMcpConfig).catch(error);
+    setPreferencesOpen(true);
   }
 
   function openFolder() {
-    if (tabs.some((file) => file.content !== file.savedContent)) {
-      setDialog({
-        title: 'Changer de projet',
-        description:
-          'Certains fichiers contiennent des modifications non enregistrées. En continuant, vous abandonnez ces modifications.',
-        fields: [],
-        submit: 'Abandonner et ouvrir',
-        danger: true,
-        onSubmit: async () => {
-          await chooseWorkspace();
-        },
-      });
-    } else void chooseWorkspace();
+    void chooseWorkspace();
   }
 
   useEffect(() => {
@@ -364,16 +372,32 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('galeata:bottom-visible', String(bottomVisible));
   }, [bottomVisible]);
+  const layoutSnapshot = useRef<{ id: string; editor: EditorLayout } | null>(null);
+  layoutSnapshot.current = workspace ? { id: workspace.id, editor: {
+    openFiles: tabs.map(file => file.path), activeFile: active, panel,
+    planVisible, bottomVisible, bottom, query, fileSearchVisible,
+    diff: diff ? { path: diff.path, staged: diff.staged } : undefined,
+    sidebarWidth, planWidth, bottomHeight,
+  } } : null;
+  useEffect(() => {
+    const flush = () => {
+      const snapshot = layoutSnapshot.current;
+      if (!snapshot) return;
+      try { saveProjectSession(snapshot.id, { editor: snapshot.editor }); } catch (e) { error(e); }
+    };
+    window.addEventListener('beforeunload', flush);
+    window.addEventListener('pagehide', flush);
+    return () => { window.removeEventListener('beforeunload', flush); window.removeEventListener('pagehide', flush); };
+  }, [error]);
   useEffect(() => {
     if (!workspace) return;
     const timer = setTimeout(() => {
-      void request('preferences.save', {
-        openFiles: tabs.map((file) => file.path),
-        activeFile: active,
-      }).catch(error);
-    }, 600);
+      const snapshot = layoutSnapshot.current;
+      if (snapshot) try { saveProjectSession(snapshot.id, { editor: snapshot.editor }); } catch (e) { error(e); }
+    }, 400);
     return () => clearTimeout(timer);
-  }, [workspace, tabs, active, error]);
+  }, [workspace, tabs, active, panel, planVisible, bottomVisible, bottom,
+    sidebarWidth, planWidth, bottomHeight, query, fileSearchVisible, diff, error]);
 
   useEffect(() => {
     if (!workspace) return;
@@ -394,8 +418,21 @@ export default function App() {
       }, 300);
     };
     void register('workspace:changed', changed).catch(error);
-    void register('plan:changed', changed).catch(error);
-    void register('activity:changed', changed).catch(error);
+    // Plan/activity events do not change files: avoid Git and directory rescans.
+    const planChanged = (event: { workspaceId: string }) => {
+      if (event.workspaceId !== workspace.id) return;
+      void request<Plan>('plan.get', { conversationId: mascotAgent || 'empty' }).then(value => {
+        if (!disposed && planConversation.current === mascotAgent) setPlan(value);
+      }).catch(error);
+    };
+    const activityChanged = (event: { workspaceId: string }) => {
+      if (event.workspaceId !== workspace.id) return;
+      void request<Activity[]>('activity.list').then(value => {
+        if (!disposed) setActivities(value);
+      }).catch(error);
+    };
+    void register('plan:changed', planChanged).catch(error);
+    void register('activity:changed', activityChanged).catch(error);
     void register<{
       workspaceId: string;
       method: string;
@@ -410,14 +447,17 @@ export default function App() {
       clearTimeout(timer);
       cleanups.forEach((clean) => clean());
     };
-  }, [workspace, refresh, error, showDiff, openFile]);
+  }, [workspace, refresh, error, showDiff, openFile, mascotAgent]);
 
   useEffect(() => {
     if (!workspace || !active) return;
     let disposed = false;
+    let reading = false;
     async function check() {
+      if (reading) return;
       const previous = tabsRef.current.find((file) => file.path === active);
       if (!previous) return;
+      reading = true;
       try {
         const result = await request<{ content: string; stamp: string }>('workspace.read', {
           path: active,
@@ -441,6 +481,8 @@ export default function App() {
         );
       } catch {
         /* The user sees missing-file errors when opening or saving. */
+      } finally {
+        reading = false;
       }
     }
     void check();
@@ -503,9 +545,16 @@ export default function App() {
       });
     else removeTab(path);
   }
+  useEffect(() => {
+    let disposed = false;
+    setPlan(initialPlan);
+    void request<Plan>('plan.get', { conversationId: mascotAgent || 'empty' }).then(value => { if (!disposed && planConversation.current === mascotAgent) setPlan(value); }).catch(error);
+    return () => { disposed = true; };
+  }, [mascotAgent, workspace?.id, error]);
+
   async function savePlan(next: Plan) {
     try {
-      const result = await request<Plan>('plan.save', { revision: next.revision, plan: next });
+      const result = await request<Plan>('plan.save', { revision: next.revision, plan: next, conversationId: mascotAgent || 'empty' });
       setPlan(result);
       await refresh();
     } catch (e) {
@@ -518,8 +567,7 @@ export default function App() {
   function askProgress() {
     const conversation = agentStore
       .getAll()
-      .filter((c) => c.state !== 'exited')
-      .at(-1);
+      .find((c) => c.id === mascotAgent);
     if (!conversation) {
       setToast('Reprenez la conversation de ce plan pour que l’agent fasse le point.');
       return;
@@ -531,7 +579,7 @@ export default function App() {
   }
 
   function updateStep(step: Step, status: Step['status']) {
-    void request<Plan>('plan.update_step', { id: step.id, status, revision: plan.revision })
+    void request<Plan>('plan.update_step', { id: step.id, status, revision: plan.revision, conversationId: mascotAgent || 'empty' })
       .then((result) => {
         setPlan(result);
         return refresh();
@@ -713,7 +761,7 @@ export default function App() {
     setSearching(true);
     const timeout = setTimeout(() => {
       void request<{ items: SearchHit[]; nextOffset: number | null }>(
-        searchFiles ? 'workspace.search_files' : 'workspace.search_text',
+        'workspace.search_text',
         { query },
       )
         .then((result) => {
@@ -733,14 +781,14 @@ export default function App() {
       cancelled = true;
       clearTimeout(timeout);
     };
-  }, [query, searchFiles, workspace, error]);
+  }, [query, workspace, error]);
   async function loadMoreSearch() {
     if (searchNext === null || searching) return;
     const expected = searchKeyRef.current;
     setSearching(true);
     try {
       const result = await request<{ items: SearchHit[]; nextOffset: number | null }>(
-        searchFiles ? 'workspace.search_files' : 'workspace.search_text',
+        'workspace.search_text',
         { query, offset: searchNext },
       );
       if (searchKeyRef.current !== expected) return;
@@ -759,6 +807,7 @@ export default function App() {
       return;
     }
     let cancelled = false;
+    setPaletteHits([]);
     const timer = setTimeout(() => {
       void request<{ items: SearchHit[] }>('workspace.search_files', { query: paletteQuery })
         .then((result) => {
@@ -772,12 +821,18 @@ export default function App() {
     };
   }, [palette, paletteQuery, workspace, error]);
   useEffect(() => {
-    const handler = (event: KeyboardEvent) => {
+    const searchShortcut = (event: KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey)) return;
+      if (event.shiftKey && event.key.toLowerCase() === 'f' && workspace) {
+        event.preventDefault(); event.stopPropagation(); openProjectSearch();
+      }
       if (event.key.toLowerCase() === 'p') {
-        event.preventDefault();
+        event.preventDefault(); event.stopPropagation();
         setPalette((value) => !value);
       }
+    };
+    const handler = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey)) return;
       if (event.key.toLowerCase() === 's') {
         event.preventDefault();
         if (active) void saveFile(active).catch(() => {});
@@ -787,8 +842,12 @@ export default function App() {
         setBottomVisible((value) => !value);
       }
     };
+    window.addEventListener('keydown', searchShortcut, true);
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    return () => {
+      window.removeEventListener('keydown', searchShortcut, true);
+      window.removeEventListener('keydown', handler);
+    };
   });
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -840,54 +899,7 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [error]);
 
-  function saveHandoff() {
-    setDialog({
-      title: 'Préparer la reprise',
-      fields: [
-        {
-          name: 'message',
-          label: 'Travail effectué et décisions',
-          type: 'textarea',
-          required: true,
-        },
-        { name: 'nextAction', label: 'Prochaine action', required: true },
-        { name: 'sessionId', label: 'Identifiant de session (facultatif)' },
-      ],
-      onSubmit: async (values) => {
-        await request('session.save_handoff', values);
-        await refresh();
-      },
-    });
-  }
-  function runVerification() {
-    setDialog({
-      title: 'Exécuter une vérification',
-      description:
-        'La commande est exécutée dans ce projet, sans shell intermédiaire. Durée maximale : 120 secondes. Son code de sortie et ses sorties seront enregistrés.',
-      fields: [
-        { name: 'program', label: 'Programme', value: 'npm', required: true },
-        { name: 'args', label: 'Arguments (tableau JSON)', value: '["test"]', required: true },
-        {
-          name: 'stepId',
-          label: 'Étape associée',
-          options: [
-            { value: '', label: 'Aucune étape' },
-            ...plan.steps.map((step) => ({ value: step.id, label: step.title })),
-          ],
-        },
-      ],
-      submit: 'Exécuter',
-      onSubmit: async (values) => {
-        const args: unknown = JSON.parse(values.args);
-        if (!Array.isArray(args) || !args.every((arg) => typeof arg === 'string'))
-          throw new Error('Utilisez un tableau JSON de chaînes, par exemple ["test"].');
-        await request('verification.run', { program: values.program, args, stepId: values.stepId });
-        await refresh();
-        setBottom('checks');
-        setBottomVisible(true);
-      },
-    });
-  }
+  function runVerification() { setChecksOpen(true); }
   async function acceptProposal(event: Activity) {
     if (event.data.baseRevision !== plan.revision) {
       error('Le plan a évolué depuis cette proposition. Demandez une proposition actualisée.');
@@ -908,22 +920,8 @@ export default function App() {
       : plan.steps;
     await savePlan({ ...plan, objective: String(event.data.objective ?? plan.objective), steps });
   }
-  const currentAgentEvents = activities
-    .filter((event) => event.kind === 'activity' && event.data.sessionId)
-    .filter(
-      (event, index, all) =>
-        all.findIndex((other) => other.data.sessionId === event.data.sessionId) === index,
-    );
+  const currentAgentEvents = latestMissions(activities);
   const activeCount = currentAgentEvents.filter((event) => event.data.status === 'running').length;
-  const overlappingFiles = new Set<string>();
-  const claimed = new Map<string, string>();
-  for (const event of currentAgentEvents.filter((event) => event.data.status === 'running'))
-    for (const file of Array.isArray(event.data.files) ? event.data.files : [])
-      if (typeof file === 'string') {
-        if (claimed.has(file) && claimed.get(file) !== event.data.sessionId)
-          overlappingFiles.add(file);
-        claimed.set(file, String(event.data.sessionId));
-      }
   const displayFile: OpenFile | undefined = diff
     ? diff.editable && activeFile?.path === diff.path
       ? activeFile
@@ -944,7 +942,7 @@ export default function App() {
       }
     : undefined;
 
-  // Shared editor: central in Files/Git, beside conversations and search results.
+  // Shared central editor for Files and Git.
   const codeArea = (
     <>
       <div className="editor-tabs">
@@ -965,7 +963,7 @@ export default function App() {
                 }}
               >
                 <span className="tab-file-icon">
-                  {file.path.endsWith('.md') ? 'M↓' : file.path.endsWith('.rs') ? 'Rs' : '✳'}
+                  <Icon name={/\.(tsx?|rs|json|css|html)$/.test(file.path) ? "file-code" : "files"} size={14} />
                 </span>
                 {file.path.split('/').pop()}
                 {file.content !== file.savedContent ? <span className="dirty-dot" /> : null}
@@ -998,16 +996,6 @@ export default function App() {
           {!tabs.length && !diff ? <span className="empty-tab">Bienvenue dans Galeata</span> : null}
         </div>
         <div className="editor-tab-actions">
-          {reviewing || filesPage ? null : (
-            <button
-              className="icon-button"
-              title="Fermer le volet de code"
-              aria-label="Fermer le volet de code"
-              onClick={() => setCodeVisible(false)}
-            >
-              <Icon name="close" size={14} />
-            </button>
-          )}
           <button
             className="icon-button"
             title="Enregistrer le fichier"
@@ -1115,6 +1103,7 @@ export default function App() {
               file={displayFile}
               diff={editorDiff}
               line={line}
+              revealRequest={revealRequest}
               onChange={(content) => {
                 mascot.react('text-edit');
                 setTabs((previous) =>
@@ -1156,7 +1145,7 @@ export default function App() {
           <img src={theme === 'night' ? '/galeata-logo-night.svg' : '/galeata-logo.svg'} alt="Galeata" />
         </div>
         <div className="topbar-divider" />
-        <button className="workspace-picker" onClick={openFolder}>
+        <button className="workspace-picker" title={workspace ? "Ouvrir un projet dans une nouvelle fenêtre" : "Ouvrir un projet"} onClick={openFolder}>
           <Icon name="folder" size={15} />
           <span>{workspace?.name ?? 'Ouvrir un projet'}</span>
           <Icon name="chevron" size={12} className="rotated" />
@@ -1174,25 +1163,8 @@ export default function App() {
               <span className="status-dot" /> Local
             </span>
           )}
-          {!filesPage && !reviewing ? (
-          <button
-            className={`icon-button ${codeVisible ? 'active' : ''}`}
-            title="Afficher ou masquer le code"
-            aria-label="Afficher ou masquer le code"
-            aria-pressed={codeVisible}
-            onClick={() => setCodeVisible((value) => !value)}
-          >
-            <Icon name="files" />
-          </button>
-          ) : null}
-          <button
-            className={`icon-button ${planVisible ? 'active' : ''}`}
-            title="Afficher ou masquer le plan"
-            aria-label="Afficher ou masquer le plan"
-            onClick={() => setPlanVisible((value) => !value)}
-          >
-            <Icon name="panel" />
-          </button>
+
+
         </div>
       </header>
       <main className="workspace-layout" ref={layoutRef}>
@@ -1211,9 +1183,9 @@ export default function App() {
                 <Icon name={item.icon} size={19} />
                 <span className="rail-label" aria-hidden="true">{item.id === 'agents' ? 'Agents' : item.label}</span>
                 {item.id === 'git' && git.files.length ? (
-                  <span className="rail-count">{git.files.length}</span>
-                ) : item.id === 'agents' && activeCount ? (
-                  <span className="rail-count">{activeCount}</span>
+                  <CountBadge count={git.files.length} label="fichiers modifiés" placement="navigation" />
+                ) : item.id === 'agents' ? (
+                  <AgentCountBadge events={activities} />
                 ) : null}
               </button>
             ))}
@@ -1231,7 +1203,7 @@ export default function App() {
               <Icon name="history" size={21} />
             </button>
             <button
-              className={`rail-button ${panel === 'settings' ? 'active' : ''}`}
+              className={`rail-button ${preferencesOpen ? 'active' : ''}`}
               aria-label="Préférences"
               title="Préférences"
               onClick={openPreferences}
@@ -1241,6 +1213,7 @@ export default function App() {
             <TurtleMascot compact agentId={mascotAgent || undefined} />
           </div>
         </nav>
+        {panel !== 'agents' && panel !== 'tools' ? <>
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="panel-heading">
             <span>{panelNames[panel]}</span>
@@ -1252,7 +1225,6 @@ export default function App() {
               onClick={() => {
                 void refresh();
                 setTreeRevision((value) => value + 1);
-                if (panel === 'agents') void loadSessions();
               }}
             >
               <Icon name="refresh" size={14} />
@@ -1294,24 +1266,23 @@ export default function App() {
                       </button>
                     </div>
                   </div>
-                  <FileTree
+                  <div className="file-tools" role="group" aria-label="Outils des fichiers">
+                    <button className="text-button" aria-pressed={!fileSearchVisible} onClick={() => setFileSearchVisible(false)}><Icon name="folder" size={14} /> Arborescence</button>
+                    <button className="text-button" aria-pressed={fileSearchVisible} title="Chercher dans le contenu (Ctrl+Shift+F)" onClick={openProjectSearch}><Icon name="search" size={14} /> Contenu</button>
+                  </div>
+                  {fileSearchVisible ? <FileSearch query={query} hits={hits} searching={searching}
+                    hasMore={searchNext !== null} onQuery={setQuery}
+                    onOpen={hit => void openFile(hit.path, hit.line || undefined, false)} onMore={() => void loadMoreSearch()} /> : null}
+                  <div hidden={fileSearchVisible}>
+                  <FileTree key={workspace.id}
                     workspaceId={workspace.id}
                     revision={treeRevision}
                     selected={active}
                     onOpen={(path) => void openFile(path)}
                     onError={error}
                   />
+                  </div>
                 </>
-              ) : null}
-              {panel === 'search' ? (
-                <div className="sidebar-content search-sidebar">
-                  <span className="eyebrow">RECHERCHE LOCALE</span>
-                  <h3>Tout le projet, un seul endroit.</h3>
-                  <p className="small-copy muted">Recherchez dans le contenu ou les noms de fichiers depuis la page centrale.</p>
-                  <div className="section-line"><h3>Résultats</h3><span className="count">{hits.length}</span></div>
-                  <p className="small-copy muted">{query.trim() ? `Recherche : « ${query} »` : 'Saisissez un terme pour commencer.'}</p>
-                  <p className="small-copy muted">Un clic ouvre le fichier à côté des résultats, à la ligne choisie.</p>
-                </div>
               ) : null}
               {panel === 'git' ? (
                 <div className="sidebar-content">
@@ -1322,7 +1293,7 @@ export default function App() {
                           <Icon name="branch" size={15} />
                           {git.branch}
                         </span>
-                        <span className="count">{git.files.length}</span>
+                        <CountBadge count={git.files.length} label="fichiers modifiés" />
                       </div>
                       <button className="sidebar-action" onClick={() => setGitManager('branches')}><Icon name="branch" size={15} /> Branches et synchronisation</button>
                       <button className="sidebar-action" onClick={() => setGitManager('stashes')}><Icon name="history" size={15} /> Mettre de côté / restaurer</button>
@@ -1349,7 +1320,7 @@ export default function App() {
                       </button>
                       <div className="section-line">
                         <h3>Changements</h3>
-                        <span className="count">{git.files.length}</span>
+                        <CountBadge count={git.files.length} label="fichiers modifiés" />
                       </div>
                       {git.files.map((file) => (
                         <div className="git-file" key={file.path}>
@@ -1445,216 +1416,6 @@ export default function App() {
                   )}
                 </div>
               ) : null}
-              {panel === 'agents' ? (
-                <div className="sidebar-content">
-                  <p className="section-caption">VOS OUTILS, VOTRE ENVIRONNEMENT</p>
-                  {['codex', 'claude'].map((id) => {
-                    const provider = providers.find((value) => value.id === id);
-                    return (
-                      <div className="provider-card" key={id}>
-                        <div className="provider-logo">{id === 'codex' ? '⌘' : '✳'}</div>
-                        <div>
-                          <strong>{id === 'codex' ? 'Codex' : 'Claude Code'}</strong>
-                          <span title={provider?.error ?? undefined}>
-                            {provider?.available
-                              ? provider.version || 'Installé'
-                              : !desktop
-                                ? 'Application de bureau requise'
-                                : provider?.error
-                                  ? 'Installé mais impossible à lancer'
-                                  : providers.length
-                                    ? 'Non installé'
-                                    : 'Détection…'}
-                          </span>
-                        </div>
-                        <button
-                          className="icon-button"
-                          title="Nouvelle conversation"
-                          aria-label={`Nouvelle conversation ${id}`}
-                          disabled={!provider?.available}
-                          onClick={() => void startAgent(id as AgentProvider).catch(error)}
-                        >
-                          <Icon name="play" size={14} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          title="Ouvrir dans le terminal (interface d’origine)"
-                          aria-label={`Ouvrir ${id} dans le terminal`}
-                          disabled={!provider?.available}
-                          onClick={() => launchAgent(id)}
-                        >
-                          <Icon name="terminal" size={14} />
-                        </button>
-                      </div>
-                    );
-                  })}
-                  <p className="section-caption">ACTIVITÉ DÉCLARÉE VIA MCP</p>
-                  {currentAgentEvents.map((event) => (
-                    <article className="agent-card" key={event.id}>
-                      <span
-                        className={`status-dot ${event.data.status === 'blocked' ? 'warning' : event.data.status === 'done' ? 'idle' : ''}`}
-                      />
-                      <div>
-                        <strong>{String(event.data.sessionId).slice(0, 12)}</strong>
-                        <p>{event.message}</p>
-                        <small>
-                          {relativeTime(event.createdAt)} · {String(event.data.status)}
-                        </small>
-                        {event.data.parentId ? (
-                          <small>Sous-agent de {String(event.data.parentId).slice(0, 12)}</small>
-                        ) : null}
-                      </div>
-                    </article>
-                  ))}
-                  {!currentAgentEvents.length ? (
-                    <p className="muted small-copy">
-                      Les agents apparaissent ici lorsqu’ils déclarent leur mission via le MCP.
-                      Aucun état d’activité n’est déduit du terminal.
-                    </p>
-                  ) : null}
-                  {overlappingFiles.size ? (
-                    <div className="inline-error">
-                      <Icon name="warning" size={14} />
-                      Chevauchement déclaré : {[...overlappingFiles].join(', ')}
-                    </div>
-                  ) : null}
-                  <div className="section-line">
-                    <h3>Reprendre une session</h3>
-                    <span className="count">{sessions.length}</span>
-                  </div>
-                  {sessions.map((session) => (
-                    <article className="session-card" key={`${session.provider}:${session.id}`}>
-                      <div className="session-provider">
-                        {session.provider === 'codex' ? 'CODEX' : 'CLAUDE CODE'}
-                        <span>{relativeTime(session.modifiedAt)}</span>
-                      </div>
-                      <strong>{session.title}</strong>
-                      {session.summary ||
-                      activities.find(
-                        (event) => event.kind === 'handoff' && event.data.sessionId === session.id,
-                      )?.message ? (
-                        <p>
-                          {session.summary ||
-                            activities.find(
-                              (event) =>
-                                event.kind === 'handoff' && event.data.sessionId === session.id,
-                            )?.message}
-                        </p>
-                      ) : session.description ? (
-                        <p>{session.description}</p>
-                      ) : null}
-                      {session.branch ? <small>Branche {session.branch}</small> : null}
-                      {session.parentId ? (
-                        <small>Sous-agent · parent {session.parentId.slice(0, 8)}</small>
-                      ) : null}
-                      <button
-                        className="text-button"
-                        disabled={
-                          !providers.find((provider) => provider.id === session.provider)?.available
-                        }
-                        onClick={() => void startAgent(session.provider, session.id).catch(error)}
-                      >
-                        Reprendre <Icon name="arrow" size={13} />
-                      </button>
-                    </article>
-                  ))}
-                  {!sessions.length ? (
-                    <p className="muted small-copy">Aucune session découverte pour ce dossier.</p>
-                  ) : null}
-                  <button className="sidebar-action" onClick={saveHandoff}>
-                    <Icon name="history" size={15} />
-                    Enregistrer une passation
-                  </button>
-                </div>
-              ) : null}
-              {panel === 'settings' ? (
-                <div className="sidebar-content">
-                  <p className="section-caption">GALEATA 0.1.0 · LINUX</p>
-                  <div className="section-line"><h3>Apparence</h3></div>
-                  <ChoiceGroup className="segmented" label="Apparence" value={theme}
-                    options={[{ id: 'paper', label: 'Papier' }, { id: 'night', label: 'Charbon' }]}
-                    onChange={value => { applyTheme(value as Theme); setTheme(value as Theme); }} />
-                  <h3>Un espace local</h3>
-                  <p className="small-copy muted">
-                    Plans et historique restent sur votre machine. Aucun compte Galeata ni
-                    télémétrie.
-                  </p>
-                  <div className="section-line">
-                    <h3>Agent par défaut</h3>
-                  </div>
-                  <p className="small-copy muted">
-                    Lancé par le bouton « + » des conversations. Si celui-ci n’est pas installé,
-                    l’autre est utilisé.
-                  </p>
-                  <ChoiceGroup className="segmented" label="Agent par défaut" value={defaultAgent}
-                    options={(['claude', 'codex'] as AgentProvider[]).map(id => {
-                      const info = providers.find(provider => provider.id === id);
-                      return { id, label: providerNames[id] + (desktop && info && !info.available ? ' · indisponible' : ''), hint: info?.error ?? undefined };
-                    })}
-                    onChange={value => { setDefaultAgent(value as AgentProvider); writeDefaultAgent(value as AgentProvider); }} />
-                  {(['claude', 'codex'] as AgentProvider[]).map((agentId) => (
-                    <div key={agentId}>
-                      <div className="section-line">
-                        <h3>Mode de {providerNames[agentId]} au démarrage</h3>
-                      </div>
-                      <ChoiceGroup className="segmented" label={`Mode de ${providerNames[agentId]} au démarrage`}
-                        value={startModes[agentId]} options={agentModes[agentId]}
-                        onChange={value => {
-                          setStartModes(previous => ({ ...previous, [agentId]: value }));
-                          writeStartMode(agentId, value);
-                        }} />
-                    </div>
-                  ))}
-                  <p className="small-copy muted">
-                    Le dernier mode choisi dans une conversation (sélecteur ou Maj+Tab) devient
-                    celui des prochaines.
-                  </p>
-                  <div className="section-line">
-                    <h3>MCP interne</h3>
-                    <Icon name="link" size={15} />
-                  </div>
-                  <p className="small-copy muted">
-                    Les agents lancés ici reçoivent une configuration MCP pour ce projet lorsque le
-                    binaire galeata-mcp est disponible.
-                  </p>
-                  <button
-                    className="sidebar-action"
-                    onClick={() =>
-                      void request<Record<string, unknown>>('mcp.config')
-                        .then(setMcpConfig)
-                        .catch(error)
-                    }
-                  >
-                    <Icon name="refresh" size={14} />
-                    Afficher la configuration
-                  </button>
-                  {mcpConfig ? (
-                    <pre className="config-code">{JSON.stringify(mcpConfig, null, 2)}</pre>
-                  ) : null}
-                  <div className="section-line">
-                    <h3>Raccourcis</h3>
-                  </div>
-                  <div className="shortcut-row">
-                    <span>Fichier / action</span>
-                    <kbd>Ctrl P</kbd>
-                  </div>
-                  <div className="shortcut-row">
-                    <span>Enregistrer</span>
-                    <kbd>Ctrl S</kbd>
-                  </div>
-                  <div className="shortcut-row">
-                    <span>Terminal</span>
-                    <kbd>Ctrl `</kbd>
-                  </div>
-                  <button
-                    className="sidebar-action"
-                    onClick={() => setPlanVisible((value) => !value)}
-                  >
-                    <Icon name="panel" size={15} />
-                    {planVisible ? 'Replier' : 'Afficher'} le plan
-                  </button>
-                </div>
-              ) : null}
             </>
           )}
         </aside>
@@ -1668,17 +1429,21 @@ export default function App() {
             setSidebarWidth(
               Math.min(
                 size,
-                sideRoom((planShown ? planWidth : 0) + (codeShown && !reviewing ? codeWidth : 0)),
+                sideRoom((planShown ? planWidth : 0)),
               ),
             )
           }
           onReset={() => setSidebarWidth(sidebarDefault)}
         />
+        </> : null}
         <section className="central-workspace" aria-label="Espace de travail" ref={centralRef}>
+          {workspace && toolsVisited ? <div className="tools-layer" hidden={panel !== 'tools'}><ToolConfiguration key={workspace.id} onConnect={provider => launchAgent(`${provider}-login`)} /></div> : null}
           {workspace ? (
             <div className="agent-layer" hidden={!agentPage}>
-              <AgentWorkspace
+              <AgentWorkspace key={workspace.id} workspaceId={workspace.id}
                 providers={providers}
+                missionEvents={activities}
+                missionPlan={plan}
                 sessions={sessions}
                 onOpenFile={(path) => void openFile(path)}
                 onShowDiff={(path) => void showDiff(path)}
@@ -1696,13 +1461,6 @@ export default function App() {
               {activeFile ? codeArea : <FilesHome workspace={workspace} git={git}
                 onFind={() => { setPaletteQuery(''); setPalette(true); }}
                 onCreate={() => fileAction('create')} onOpen={(path) => void openFile(path)} />}
-            </section>
-          ) : null}
-          {workspace && panel === 'search' ? (
-            <section className="search-area" aria-label="Recherche dans le projet">
-              <SearchPage query={query} filesOnly={searchFiles} hits={hits} searching={searching}
-                hasMore={searchNext !== null} onQuery={setQuery} onFilesOnly={setSearchFiles}
-                onOpen={(hit) => void openFile(hit.path, hit.line || undefined)} onMore={() => void loadMoreSearch()} />
             </section>
           ) : null}
           {reviewing ? (
@@ -1810,7 +1568,7 @@ export default function App() {
                       <Icon name={item.icon} size={13} />
                       {item.label}
                       {item.id === 'activity' && activities.length ? (
-                        <span className="count">{activities.length}</span>
+                        <CountBadge count={activities.length} label="activités" />
                       ) : null}
                     </button>
                   ))}
@@ -1878,7 +1636,7 @@ export default function App() {
                 ) : (
                   <div className="terminal-idle">
                     <div>
-                      <span className="prompt-symbol">❯</span>
+                      <Icon name="chevron" size={14} className="prompt-symbol" />
                       <span>
                         {!desktop
                           ? 'Aperçu de l’interface · aucun processus local connecté.'
@@ -1917,24 +1675,6 @@ export default function App() {
             </section>
           ) : null}
         </section>
-        {codeShown && !reviewing ? (
-          <Splitter
-            label="Largeur du volet de code"
-            orientation="vertical"
-            size={codeWidth}
-            bounds={codeBounds}
-            direction={-1}
-            onResize={(size) =>
-              setCodeWidth(Math.min(size, sideRoom(sidebarWidth + (planShown ? planWidth : 0))))
-            }
-            onReset={() => setCodeWidth(codeDefault)}
-          />
-        ) : null}
-        {codeShown && !reviewing ? (
-          <section className="code-panel" aria-label="Volet de code" style={{ width: codeWidth }}>
-            {codeArea}
-          </section>
-        ) : null}
         {planVisible && workspace ? (
           <Splitter
             label="Largeur du plan"
@@ -1944,7 +1684,7 @@ export default function App() {
             direction={-1}
             onResize={(size) =>
               setPlanWidth(
-                Math.min(size, sideRoom(sidebarWidth + (codeShown && !reviewing ? codeWidth : 0))),
+                Math.min(size, sideRoom(sidebarWidth)),
               )
             }
             onReset={() => setPlanWidth(planDefault)}
@@ -1966,6 +1706,12 @@ export default function App() {
           />
         ) : null}
       </main>
+      {checksOpen && workspace ? <ChecksDialog key={workspace.id} workspaceId={workspace.id}
+        dirty={tabs.some(file => file.content !== file.savedContent)} onClose={() => setChecksOpen(false)} /> : null}
+      {preferencesOpen ? <PreferencesDialog theme={theme} defaultAgent={defaultAgent} providers={providers}
+        onThemeChange={value => { applyTheme(value); setTheme(value); }}
+        onAgentChange={value => { writeDefaultAgent(value); setDefaultAgent(value); }}
+        onClose={() => setPreferencesOpen(false)} /> : null}
       {gitManager && workspace ? <GitManager key={workspace.id} workspaceId={workspace.id} git={git}
         initialTab={gitManager} busy={!!busy} dirty={tabs.some((file) => file.content !== file.savedContent)}
         onClose={() => setGitManager(null)} onMutate={mutateGit} /> : null}
@@ -1984,16 +1730,9 @@ export default function App() {
           )}
           <button onClick={() => navigate('agents')}>
             <Icon name="agents" size={12} />
-            {activeCount ? `${activeCount} agent(s) déclaré(s) actif(s)` : 'Agents au repos'}
+            {activeCount ? `${activeCount} ${activeCount === 1 ? 'agent déclaré actif' : 'agents déclarés actifs'}` : 'Aucune mission déclarée active'}
           </button>
-          <button
-            title="Exécuter une vérification"
-            disabled={!workspace || !desktop}
-            onClick={runVerification}
-          >
-            <Icon name="check" size={12} />
-            Vérifier
-          </button>
+          <ChecksStatusButton workspaceId={workspace?.id} open={checksOpen} onClick={runVerification} />
         </div>
         <div>
           <span className="status-message">
@@ -2040,6 +1779,11 @@ export default function App() {
             onClick={(event) => event.stopPropagation()}
             onKeyDown={(event) => {
               if (event.key === 'Escape') setPalette(false);
+              if (event.key === 'Enter' && event.target instanceof HTMLInputElement && paletteHits[0]) {
+                event.preventDefault(); navigate('files');
+                void openFile(paletteHits[0].path, undefined, false);
+                setPalette(false); setPaletteQuery('');
+              }
             }}
           >
             <div className="palette-input">
@@ -2059,7 +1803,8 @@ export default function App() {
                   <button
                     key={hit.path}
                     onClick={() => {
-                      void openFile(hit.path);
+                      navigate('files');
+                      void openFile(hit.path, undefined, false);
                       setPalette(false);
                       setPaletteQuery('');
                     }}
@@ -2077,7 +1822,7 @@ export default function App() {
                     }}
                   >
                     <Icon name="folder" size={16} />
-                    Ouvrir un dossier
+                    {workspace ? "Ouvrir un projet dans une nouvelle fenêtre" : "Ouvrir un dossier"}
                   </button>
                   <button
                     disabled={!workspace}
@@ -2108,15 +1853,7 @@ export default function App() {
                     <Icon name="agents" size={16} />
                     Voir les agents et les sessions
                   </button>
-                  <button
-                    onClick={() => {
-                      setPalette(false);
-                      setPlanVisible((value) => !value);
-                    }}
-                  >
-                    <Icon name="plan" size={16} />
-                    Afficher ou replier le plan
-                  </button>
+
                 </>
               )}
               {paletteQuery && !paletteHits.length ? (

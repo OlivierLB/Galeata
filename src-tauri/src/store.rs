@@ -29,7 +29,9 @@ impl Store {
           CREATE TABLE IF NOT EXISTS plans (workspace TEXT PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL);
           CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, kind TEXT NOT NULL, author TEXT NOT NULL, message TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL);
           CREATE INDEX IF NOT EXISTS events_workspace ON events(workspace, created_at DESC);
-          CREATE TABLE IF NOT EXISTS preferences (workspace TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(workspace,key));").map_err(|e| e.to_string())?;
+          CREATE TABLE IF NOT EXISTS preferences (workspace TEXT NOT NULL, key TEXT NOT NULL, body TEXT NOT NULL, PRIMARY KEY(workspace,key));
+          CREATE TABLE IF NOT EXISTS check_runs (id TEXT PRIMARY KEY, workspace TEXT NOT NULL, updated_at INTEGER NOT NULL, body TEXT NOT NULL);
+          CREATE INDEX IF NOT EXISTS check_runs_workspace ON check_runs(workspace, updated_at DESC);").map_err(|e| e.to_string())?;
         Ok(Self(Mutex::new(connection)))
     }
     pub fn plan(&self, workspace: &str) -> Result<Value> {
@@ -44,6 +46,29 @@ impl Store {
             .map_err(|e| e.to_string())?;
         body.map(|v| serde_json::from_str(&v).map_err(|e| e.to_string()))
             .unwrap_or_else(|| Ok(json!({"revision":0,"objective":"","steps":[]})))
+    }
+    pub fn save_check_run(&self, id: &str, workspace: &str, body: &Value) -> Result<()> {
+        let mut db = self.0.lock().map_err(|e| e.to_string())?;
+        let transaction = db.transaction().map_err(|e| e.to_string())?;
+        transaction.execute("INSERT INTO check_runs(id,workspace,updated_at,body) VALUES(?1,?2,?3,?4) ON CONFLICT(id) DO UPDATE SET updated_at=excluded.updated_at,body=excluded.body",
+            params![id, workspace, now(), body.to_string()]).map_err(|e| e.to_string())?;
+        transaction.execute("DELETE FROM check_runs WHERE workspace=?1 AND id NOT IN (SELECT id FROM check_runs WHERE workspace=?1 ORDER BY updated_at DESC,rowid DESC LIMIT 8)", [workspace]).map_err(|e| e.to_string())?;
+        transaction.commit().map_err(|e| e.to_string())
+    }
+    pub fn check_runs(&self, workspace: &str) -> Result<Value> {
+        let db = self.0.lock().map_err(|e| e.to_string())?;
+        let mut statement = db.prepare("SELECT body FROM check_runs WHERE workspace=?1 ORDER BY updated_at DESC,rowid DESC LIMIT 8").map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map([workspace], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut result = vec![];
+        for row in rows {
+            result.push(
+                serde_json::from_str::<Value>(&row.map_err(|e| e.to_string())?)
+                    .map_err(|e| e.to_string())?,
+            );
+        }
+        Ok(json!(result))
     }
     pub fn update_plan(
         &self,
@@ -123,7 +148,7 @@ impl Store {
         let existing = current["steps"].as_array().cloned().unwrap_or_default();
         let normalize = |s: &str| s.trim().to_lowercase();
         let mut used = std::collections::HashSet::new();
-        let steps = steps
+        let mut steps = steps
             .iter()
             .filter(|step| !step.title.trim().is_empty())
             .take(100)
@@ -157,6 +182,12 @@ impl Store {
                 })
             })
             .collect::<Vec<_>>();
+        // Completed work remains visible when a later message adds new tasks.
+        for old in &existing {
+            if old["status"] == "done" && !used.contains(old["id"].as_str().unwrap_or_default()) {
+                steps.push(old.clone());
+            }
+        }
         if steps.is_empty() {
             return Err("Un plan a besoin d’au moins une étape".into());
         }
@@ -292,6 +323,31 @@ fn validate_plan(body: &Value) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn conversation_plans_are_isolated_and_resume_alias_survives_reopening() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("plans.sqlite");
+        let store = Store::open(&path).unwrap();
+        let body = json!({"objective":"Conversation A","steps":[]});
+        store
+            .update_plan("w:conversation:a", 0, body, "agent", "update")
+            .unwrap();
+        assert_eq!(store.plan("w:conversation:b").unwrap()["revision"], 0);
+        store
+            .set_preference(
+                "w",
+                "plan-session:codex:session",
+                &json!("w:conversation:a"),
+            )
+            .unwrap();
+        drop(store);
+        let store = Store::open(&path).unwrap();
+        let scope = store.preference("w", "plan-session:codex:session").unwrap();
+        assert_eq!(
+            store.plan(scope.as_str().unwrap()).unwrap()["objective"],
+            "Conversation A"
+        );
+    }
     #[test]
     fn revision_and_event_are_atomic_and_survive_reopening() {
         let temp = tempfile::tempdir().unwrap();

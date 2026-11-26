@@ -15,7 +15,7 @@ function authorName(author: string): string {
 
 function StepIcon({ status }: { status: Step['status'] }) {
   if (status === 'done') return <Icon name="check" size={12} />;
-  if (status === 'blocked') return <span aria-hidden="true">!</span>;
+  if (status === 'blocked') return <Icon name="warning" size={12} />;
   if (status === 'in_progress') return <span className="active-step-dot" />;
   return null;
 }
@@ -194,7 +194,7 @@ export default function PlanPanel({
                           aria-label={`${section.step.title} : ${untracked ? 'état inconnu' : statusLabels[section.step.status]}`}
                           onClick={() => onStep(section.step, nextStatus(section.step.status))}
                         >
-                          {untracked ? '?' : <StepIcon status={section.step.status} />}
+                          {untracked ? <Icon name="question" size={12} /> : <StepIcon status={section.step.status} />}
                         </button>
                         <h3>{section.step.title}</h3>
                         {untracked ? null : section.step.status === 'in_progress' ? (
@@ -225,7 +225,7 @@ export default function PlanPanel({
                     aria-label={`${step.title} : ${untracked ? 'état inconnu' : statusLabels[step.status]}`}
                     onClick={() => onStep(step, nextStatus(step.status))}
                   >
-                    {untracked ? '?' : <StepIcon status={step.status} />}
+                    {untracked ? <Icon name="question" size={12} /> : <StepIcon status={step.status} />}
                   </button>
                   <div
                     className="step-text"

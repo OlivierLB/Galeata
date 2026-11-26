@@ -1,3 +1,4 @@
+import { Icon } from './Icon.tsx';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { animations } from '../mascot/animations.ts';
 import { mascot } from '../mascot/store.ts';
@@ -35,7 +36,7 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
     let paintedAt = -Infinity;
     const definition = animations[snapshot.animation];
     const stop = () => {
-      if (tick !== undefined) cancelAnimationFrame(tick);
+      if (tick !== undefined) window.clearTimeout(tick);
       tick = undefined;
       previousTime = undefined;
     };
@@ -46,7 +47,7 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
       previousTime = now;
       const context = canvas.current.getContext('2d');
       if (!context) return;
-      // Follow the display clock, but cap canvas painting at 30 fps.
+      // Schedule only useful paints; idle poses need no display-rate callbacks.
       if (now - paintedAt >= 1000 / 30) {
         paintedAt = now;
         const duration = 1000 / definition.fps;
@@ -72,7 +73,8 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
         canvas.current.dataset.frame = String(frame);
       }
       if (moving && !document.hidden) {
-        tick = requestAnimationFrame(draw);
+        tick = window.setTimeout(() => draw(performance.now()),
+          snapshot.animation === 'idle' || snapshot.animation === 'waiting' ? 100 : 1000 / 30);
       }
     };
     const resume = () => {
@@ -113,10 +115,10 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
         {failed ? <span className="mascot-fallback" aria-hidden="true">🐢</span> : null}
       </button>
       {!compact ? <span className="mascot-caption">{snapshot.label}</span> : null}
-      {!reduced ? (
+      {!compact && !reduced ? (
         <button className="mascot-motion" aria-label={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
           title={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
-          onClick={() => setMotion((value) => !value)}>{motion ? 'Ⅱ' : '▷'}</button>
+          onClick={() => setMotion((value) => !value)}><Icon name={motion ? "pause" : "play"} size={12} /></button>
       ) : null}
     </div>
   );

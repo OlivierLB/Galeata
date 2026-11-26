@@ -1,3 +1,4 @@
+import { Icon } from './Icon.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -158,7 +159,7 @@ export default function TerminalView({
   if (!desktop)
     return (
       <div className="terminal-placeholder">
-        <span className="prompt-symbol">❯</span>
+        <Icon name="chevron" size={14} className="prompt-symbol" />
         <span>Le terminal et les agents sont disponibles dans l’application de bureau.</span>
       </div>
     );

@@ -105,7 +105,7 @@ export default function ActivityFeed({
                     </span>
                   ))}
                   {files.length > 8 ? (
-                    <small>+ {files.length - 8} fichier(s) déclaré(s)</small>
+                    <small>+ {files.length - 8} {files.length - 8 === 1 ? 'fichier déclaré' : 'fichiers déclarés'}</small>
                   ) : null}
                 </div>
               ) : null}

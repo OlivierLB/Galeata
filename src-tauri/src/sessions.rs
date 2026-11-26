@@ -62,7 +62,8 @@ pub fn discover(w: &Workspace) -> Result<Value> {
     collect(&codex.join("sessions"), 5, &mut files);
     let claude = claude_directory();
     collect(&claude.join("projects"), 4, &mut files);
-    files.sort_by_key(|p| std::cmp::Reverse(p.metadata().and_then(|m| m.modified()).ok()));
+    // Cache filesystem metadata once instead of re-reading it on every comparison.
+    files.sort_by_cached_key(|p| std::cmp::Reverse(p.metadata().and_then(|m| m.modified()).ok()));
     let codex_names = codex_names(&codex.join("session_index.jsonl"));
     let mut sessions = vec![];
     for path in files.iter().take(3000) {

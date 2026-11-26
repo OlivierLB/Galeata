@@ -37,6 +37,10 @@ export async function openWorkspace(path?: string): Promise<Workspace | null> {
     path = selected;
   }
   const { invoke } = await import('@tauri-apps/api/core');
+  if (activeWorkspace) {
+    await invoke('open_project_window', { path });
+    return null;
+  }
   const workspace = await invoke<Workspace>('open_workspace', { path });
   setActiveWorkspace(workspace);
   localStorage.setItem('galeata:last-workspace', workspace.root);
@@ -133,8 +137,37 @@ try {
 } catch {
   previewPlan = structuredClone(defaultPlan);
 }
+let previewChecks: Record<string, unknown> = (() => {
+  try { const value = JSON.parse(localStorage.getItem('galeata:preview-checks') ?? '{}'); return value && typeof value === 'object' && !Array.isArray(value) ? value : {}; } catch { return {}; }
+})();
 function previewRequest(method: string, args: Record<string, unknown>): unknown {
   switch (method) {
+    case 'tools.config.list': return { entries: [
+      { id: 'example-settings', name: args.provider === 'claude' ? 'settings.json' : 'config.toml', path: 'Exemple · configuration utilisateur', scope: 'Utilisateur', category: 'settings', editable: true, reason: '' },
+      { id: 'example-skill', name: 'review', path: 'Exemple · skills/review/SKILL.md', scope: 'Projet', category: 'skills', editable: true, reason: '' },
+      { id: 'example-plugin', name: 'plugin-skill', path: 'Exemple · plugin/skills/plugin-skill/SKILL.md', scope: 'Plugin installé', category: 'plugins', editable: false, reason: 'Fourni par un plugin.' },
+    ], limited: false };
+    case 'tools.config.read': return { content: args.id === 'example-settings' ? (args.provider === 'claude' ? '{\n  "hooks": {}\n}' : '# Configuration Codex\nmodel = "exemple"\n') : '# Instructions du skill\n\nExemple de contenu.', stamp: 'preview' };
+    case 'tools.config.write': return { content: String(args.content), stamp: 'preview-saved' };
+    case 'checks.catalog': {
+      const definitions = [
+        { id: 'preview:types', name: 'Types TypeScript', program: 'npm', args: ['run', 'check'], cwd: '', timeout: 600, origin: 'Exemple package.json', category: 'Analyse' },
+        { id: 'preview:tests', name: 'Tests JavaScript', program: 'npm', args: ['test'], cwd: '', timeout: 600, origin: 'Exemple package.json', category: 'Tests' },
+        { id: 'preview:rust', name: 'Tests Rust', program: 'cargo', args: ['test', '--locked'], cwd: 'src-tauri', timeout: 600, origin: 'Exemple Cargo.toml', category: 'Tests' },
+      ];
+      const custom = Array.isArray(previewChecks.custom) ? previewChecks.custom as typeof definitions : [];
+      const merged = new Map([...definitions, ...custom].map(value => [value.id, value]));
+      return { checks: [...merged.values()].map(definition => ({ definition, available: true })), configuration: structuredClone(previewChecks), scope: 'Exemples de contrôles, sans accès aux programmes locaux.' };
+    }
+    case 'checks.configure':
+      previewChecks = structuredClone(args);
+      localStorage.setItem('galeata:preview-checks', JSON.stringify(previewChecks));
+      return null;
+    case 'checks.status': return [];
+    case 'checks.output': return '';
+    case 'checks.start':
+    case 'checks.cancel': throw new Error('L’exécution de contrôles nécessite l’application de bureau.');
+
     case 'workspace.list': {
       const prefix = args.path ? `${args.path}/` : '';
       const children = new Map<
@@ -270,21 +303,24 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
     case 'git.worktrees':
       return 'Aucun worktree connecté dans l’aperçu.';
     case 'plan.get':
-      return structuredClone(previewPlan);
+      return args.conversationId ? JSON.parse(localStorage.getItem(`galeata:preview-plan:${String(args.conversationId)}`) ?? '{"objective":"","revision":0,"steps":[]}') : structuredClone(previewPlan);
     case 'plan.save':
     case 'plan.update_step': {
-      if (args.revision !== previewPlan.revision)
+      const storageKey = args.conversationId ? `galeata:preview-plan:${String(args.conversationId)}` : 'galeata:preview-plan';
+      let scopedPlan = previewPlan;
+      if (args.conversationId) scopedPlan = JSON.parse(localStorage.getItem(storageKey) ?? '{"objective":"","revision":0,"steps":[]}');
+      if (args.revision !== scopedPlan.revision)
         throw new Error('REVISION_CONFLICT : rechargez le plan');
       if (method === 'plan.save')
-        previewPlan = { ...(args.plan as Plan), revision: previewPlan.revision + 1 };
+        scopedPlan = { ...(args.plan as Plan), revision: scopedPlan.revision + 1 };
       // A real status change: progress is tracked from now on (as in the app).
       else
-        previewPlan = {
-          ...previewPlan,
+        scopedPlan = {
+          ...scopedPlan,
           tracked: undefined,
           proposedAt: undefined,
-          revision: previewPlan.revision + 1,
-          steps: previewPlan.steps.map((step) =>
+          revision: scopedPlan.revision + 1,
+          steps: scopedPlan.steps.map((step) =>
             step.id === args.id
               ? {
                   ...step,
@@ -295,7 +331,7 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
               : step,
           ),
         };
-      localStorage.setItem('galeata:preview-plan', JSON.stringify(previewPlan));
+      localStorage.setItem(storageKey, JSON.stringify(scopedPlan));
       previewEvents = [
         {
           id: crypto.randomUUID(),
@@ -307,10 +343,11 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
         },
         ...previewEvents,
       ];
-      return structuredClone(previewPlan);
+      if (!args.conversationId) previewPlan = scopedPlan;
+      return structuredClone(scopedPlan);
     }
     case 'activity.list':
-      return previewEvents;
+      return args.conversationId ? previewEvents.filter(event => event.data.conversationId === args.conversationId) : previewEvents;
     case 'sessions.list':
       // Example sessions (preview only), to show how they are presented.
       return [
@@ -361,4 +398,10 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
         'Cette action nécessite l’application de bureau. L’aperçu n’accède pas à votre machine.',
       );
   }
+}
+
+export async function startupProject(): Promise<string | null> {
+  if (!desktop) return null;
+  const { invoke } = await import('@tauri-apps/api/core');
+  return invoke<string | null>('startup_project');
 }

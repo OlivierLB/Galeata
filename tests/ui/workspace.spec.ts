@@ -37,14 +37,12 @@ test('explorer, rechercher et ouvrir un fichier sans annoncer de connexion local
   await page.goto('/');
   await expect(page.getByText('APERÇU INTERFACE')).toBeVisible();
   await expect(page.getByRole('complementary', { name: 'Plan', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Rechercher dans le projet' }).fill('App.tsx');
-  await page.getByRole('checkbox', { name: 'Noms de fichiers uniquement' }).check();
+  await page.keyboard.press('Control+p');
+  await page.getByRole('textbox', { name: 'Fichier ou action' }).fill('App.tsx');
   await page.getByRole('button', { name: 'src/App.tsx', exact: true }).click();
   await expect(page.getByRole('tab', { name: /App.tsx/ })).toBeVisible();
   await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Nouvelle conversation codex' })).toBeDisabled();
-  await expect(page.getByRole('button', { name: 'Ouvrir codex dans le terminal' })).toBeDisabled();
+  await expect(page.locator('.agent-home')).toBeVisible();
   expect(errors).toEqual([]);
 });
 
