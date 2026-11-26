@@ -1,3 +1,4 @@
+import { Button, Checkbox } from './ui/Controls.tsx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { request, subscribe } from '../api.ts';
 import { conversationSubagents } from '../agents/subagents.ts';
@@ -34,16 +35,16 @@ export default function Subagents({ conversation }: { conversation: Conversation
   const shown = includeDone ? agents : active;
   const current = shown.find(agent => agent.id === selected) ?? shown[0];
   return <>
-    <button className="text-button subagents-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog">
+    <Button className="text-button subagents-trigger" onClick={() => setOpen(true)} aria-haspopup="dialog">
       <Icon name="agents" size={13} /> Sous-agents · {active.length} actif{active.length === 1 ? '' : 's'} · {agents.length} utilisé{agents.length === 1 ? '' : 's'}
-    </button>
+    </Button>
     {open ? <ModalDialog title="Sous-agents de cette conversation" closeLabel="Fermer les sous-agents"
       className="subagents-dialog" onClose={() => setOpen(false)}>
       <div className="subagents-content">
-        <label><input type="checkbox" checked={includeDone} onChange={event => setIncludeDone(event.target.checked)} /> Inclure les terminés</label>
+        <label><Checkbox checked={includeDone} onChange={event => setIncludeDone(event.target.checked)} /> Inclure les terminés</label>
         {error ? <p role="alert">Le suivi déclaré n’a pas pu être chargé : {error}</p> : null}
         <div className="subagent-tabs" role="tablist" aria-label="Sous-agents">
-          {shown.map((agent, index) => <button key={agent.id} id={`subagent-tab-${index}`} role="tab"
+          {shown.map((agent, index) => <Button key={agent.id} id={`subagent-tab-${index}`} role="tab"
             aria-selected={agent.id === current?.id} aria-controls="subagent-details"
             onClick={() => setSelected(agent.id)} onKeyDown={event => {
               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -53,7 +54,7 @@ export default function Subagents({ conversation }: { conversation: Conversation
               setSelected(shown[next].id); document.getElementById(`subagent-tab-${next}`)?.focus();
             }} tabIndex={agent.id === current?.id ? 0 : -1}>
             {agent.name} <small>{agent.status}</small>
-          </button>)}
+          </Button>)}
         </div>
         {current ? <section id="subagent-details" role="tabpanel" aria-labelledby={`subagent-tab-${shown.indexOf(current)}`}>
           <p className="muted">{current.id} · {current.status}</p>

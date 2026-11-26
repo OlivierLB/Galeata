@@ -1,3 +1,4 @@
+import { Button, TextArea, TextInput } from './ui/Controls.tsx';
 import Subagents from './Subagents.tsx';
 import MessageQueue from './MessageQueue.tsx';
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
@@ -333,7 +334,7 @@ export function AgentComposer({
                   ? 'Skills installés'
                   : 'Commandes'}
             </strong>
-            <button
+            <Button
               className="text-button"
               onClick={() => {
                 close();
@@ -342,9 +343,9 @@ export function AgentComposer({
               aria-label="Fermer les suggestions"
             >
               Échap
-            </button>
+            </Button>
           </header>
-          <input
+          <TextInput
             ref={search}
             aria-label="Rechercher une suggestion"
             placeholder={
@@ -368,7 +369,7 @@ export function AgentComposer({
               <p role="status">Recherche…</p>
             ) : choices.length ? (
               choices.map((choice, i) => (
-                <button
+                <Button
                   key={choice.id}
                   id={`${listId}-${i}`}
                   role="option"
@@ -379,7 +380,7 @@ export function AgentComposer({
                 >
                   <strong>{choice.label}</strong>
                   <span>{choice.detail}</span>
-                </button>
+                </Button>
               ))
             ) : (
               <p role="status">
@@ -401,7 +402,7 @@ export function AgentComposer({
         </div>
       ) : null}
       <div className="composer-input-row">
-        <textarea
+        <TextArea
           ref={input}
           aria-label="Message à l’agent"
           placeholder={
@@ -437,33 +438,33 @@ export function AgentComposer({
       ) : null}
       <div className="composer-bar">
         <div className="composer-tools" aria-label="Actions du message">
-          <button
+          <Button
             type="button"
             disabled={exited}
             onClick={() => open('commands')}
             title="Commandes (Ctrl+Alt+/)"
           >
             <span>/</span> Commandes
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={exited}
             onClick={() => open('files')}
             title="Citer un fichier (Ctrl+Alt+F)"
           >
             <span>@</span> Fichier
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
             disabled={exited}
             onClick={() => open('skills')}
             title="Appeler un skill (Ctrl+Alt+S)"
           >
             <Icon name="spark" size={13} /> Skill
-          </button>
+          </Button>
         </div>
         {children}
-        <button
+        <Button
           className="text-button composer-context"
           disabled={!canCompact}
           onClick={() => void compact()}
@@ -479,23 +480,23 @@ export function AgentComposer({
             : conversation.usage?.contextWindow
               ? `Contexte ${Math.round((conversation.usage.inputTokens / conversation.usage.contextWindow) * 100)} %`
               : 'Contexte'}
-        </button>
+        </Button>
         <div className="composer-send-actions">
-          <button
+          <Button
             className="text-button"
             title="Envoyer après la fin complète du tour précédent (Tab)"
             disabled={!draft.trim() || exited || sending}
             onClick={enqueue}
           >
             Mettre en file <kbd>Tab</kbd>
-          </button>
-          <button
-            className="button"
+          </Button>
+          <Button
+            variant="primary"
             disabled={!draft.trim() || exited || sending}
             onClick={() => void send()}
           >
             Envoyer <Icon name="arrow" size={14} />
-          </button>
+          </Button>
         </div>
       </div>
       <div className="composer-meta">

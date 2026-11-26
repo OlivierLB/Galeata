@@ -72,15 +72,7 @@ pub fn claude_history(transcript: &str, cwd: &str) -> Vec<AgentEvent> {
                             {
                                 continue;
                             }
-                            let output = match &block["content"] {
-                                Value::String(text) => text.clone(),
-                                Value::Array(parts) => parts
-                                    .iter()
-                                    .filter_map(|p| p["text"].as_str())
-                                    .collect::<Vec<_>>()
-                                    .join("\n"),
-                                _ => String::new(),
-                            };
+                            let output = crate::content::tool_text(&block["content"]);
                             events.push(AgentEvent::ToolCompleted {
                                 item_id: block["tool_use_id"]
                                     .as_str()

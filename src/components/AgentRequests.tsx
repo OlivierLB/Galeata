@@ -1,3 +1,4 @@
+import { Button, TextArea, TextInput } from './ui/Controls.tsx';
 import { useState } from 'react';
 import type { ChatItem, PlanAnswer, Question, QuestionsAnswer } from '../agents/types.ts';
 import { Markdown } from './Markdown.tsx';
@@ -60,20 +61,20 @@ export function PlanCard({ item, actions }: { item: ChatItem; actions: RequestAc
           <div className="plan-actions">
             {pending ? (
               <>
-                <button
-                  className="button"
+                <Button
+                  variant="primary"
                   title="Les modifications de fichiers seront acceptées automatiquement pour cette conversation"
                   onClick={() => approve(true)}
                 >
                   <Icon name="check" size={14} /> Approuver et lancer
-                </button>
-                <button className="text-button" onClick={() => approve(false)}>
+                </Button>
+                <Button className="text-button" onClick={() => approve(false)}>
                   Approuver, en validant chaque modification
-                </button>
+                </Button>
               </>
             ) : (
-              <button
-                className="button"
+              <Button
+                variant="primary"
                 onClick={() => {
                   actions.onSend('Mets en œuvre ce plan.');
                   actions.onAnswer(
@@ -84,20 +85,20 @@ export function PlanCard({ item, actions }: { item: ChatItem; actions: RequestAc
                 }}
               >
                 <Icon name="play" size={14} /> Mettre en œuvre
-              </button>
+              </Button>
             )}
           </div>
           <div className="plan-feedback">
-            <textarea
+            <TextArea
               aria-label="Modifications à apporter au plan"
               placeholder="Que faut-il changer ? (optionnel)"
               rows={2}
               value={feedback}
               onChange={(event) => setFeedback(event.target.value)}
             />
-            <button className="text-button" disabled={ready && !feedback.trim()} onClick={refine}>
+            <Button className="text-button" disabled={ready && !feedback.trim()} onClick={refine}>
               Continuer à planifier
-            </button>
+            </Button>
           </div>
         </footer>
       ) : item.status && planStatus[item.status] ? (
@@ -142,7 +143,7 @@ export function QuestionCard({ item, actions }: { item: ChatItem; actions: Reque
             {q.options.map((option) => {
               const checked = (selected[q.id] ?? []).includes(option.label);
               return (
-                <button
+                <Button
                   key={option.label}
                   role={q.multiSelect ? 'checkbox' : 'radio'}
                   aria-checked={checked}
@@ -159,12 +160,12 @@ export function QuestionCard({ item, actions }: { item: ChatItem; actions: Reque
                 >
                   <strong>{option.label}</strong>
                   {option.description ? <span>{option.description}</span> : null}
-                </button>
+                </Button>
               );
             })}
           </div>
           {q.allowOther ? (
-            <input
+            <TextInput
               className="question-other"
               aria-label={`Autre réponse : ${q.question}`}
               placeholder={q.options.length ? 'Autre réponse…' : 'Votre réponse…'}
@@ -181,9 +182,9 @@ export function QuestionCard({ item, actions }: { item: ChatItem; actions: Reque
       ))}
       {pending ? (
         instant && !questions[0]?.allowOther ? null : (
-          <button className="button" disabled={!complete} onClick={() => submit()}>
+          <Button variant="primary" disabled={!complete} onClick={() => submit()}>
             Répondre
-          </button>
+          </Button>
         )
       ) : (
         <p className="request-status">

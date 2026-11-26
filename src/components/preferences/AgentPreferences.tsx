@@ -1,3 +1,4 @@
+import { Text } from '../ui/Controls.tsx';
 import { useState } from 'react';
 import { desktop } from '../../api.ts';
 import { agentModes, readStartMode, writeStartMode } from '../../agents/preferences.ts';
@@ -13,7 +14,7 @@ export default function AgentPreferences({ defaultAgent, providers, onChange }: 
     <h3 id="agent-preferences-title">Conversations</h3>
     <div className="preference-field">
       <h4>Agent par défaut</h4>
-      <p className="muted small-copy">Proposé à l’accueil des nouvelles conversations. Si cet agent est indisponible, l’autre est utilisé.</p>
+      <Text tone="muted" className="small-copy">Proposé à l’accueil des nouvelles conversations. Si cet agent est indisponible, l’autre est utilisé.</Text>
       <ChoiceGroup className="segmented" label="Agent par défaut" value={defaultAgent}
         options={(['claude', 'codex'] as const).map(id => {
           const info = providers.find(provider => provider.id === id);
@@ -30,6 +31,6 @@ export default function AgentPreferences({ defaultAgent, providers, onChange }: 
           setModes(previous => ({ ...previous, [provider]: value }));
         }} />
     </div>)}
-    <p className="muted small-copy">Le dernier mode choisi dans une conversation devient celui des prochaines.</p>
+    <Text tone="muted" className="small-copy">Le dernier mode choisi dans une conversation devient celui des prochaines.</Text>
   </section>;
 }

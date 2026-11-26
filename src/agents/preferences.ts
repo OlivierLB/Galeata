@@ -1,3 +1,4 @@
+import { readPreference, writePreference } from '../storage.ts';
 import type { Provider } from './types.ts';
 
 const KEY = 'galeata:default-agent';
@@ -5,36 +6,20 @@ const SHOW_TOOLS_KEY = 'galeata:show-tools';
 
 /** Display preference only: agent events are retained while tool cards are hidden. */
 export function readShowTools(): boolean {
-  try {
-    return localStorage.getItem(SHOW_TOOLS_KEY) !== 'false';
-  } catch {
-    return true;
-  }
+  return readPreference(SHOW_TOOLS_KEY) !== 'false';
 }
 
 export function writeShowTools(show: boolean) {
-  try {
-    localStorage.setItem(SHOW_TOOLS_KEY, String(show));
-  } catch {
-    /* storage unavailable: keep the in-memory choice */
-  }
+  writePreference(SHOW_TOOLS_KEY, String(show));
 }
 
 /** The agent started by "+", as chosen in the preferences (per machine). */
 export function readDefaultAgent(): Provider {
-  try {
-    return localStorage.getItem(KEY) === 'codex' ? 'codex' : 'claude';
-  } catch {
-    return 'claude';
-  }
+  return readPreference(KEY) === 'codex' ? 'codex' : 'claude';
 }
 
 export function writeDefaultAgent(provider: Provider) {
-  try {
-    localStorage.setItem(KEY, provider);
-  } catch {
-    /* storage unavailable: the choice lasts for this session only */
-  }
+  writePreference(KEY, provider);
 }
 
 /** Preferred agent if installed, otherwise the other one, otherwise none. */
@@ -104,19 +89,10 @@ const MODE_KEY = (provider: Provider) => `galeata:${provider}-mode`;
 
 /** Mode used when a conversation starts (default: Auto, like the terminal). */
 export function readStartMode(provider: Provider): string {
-  try {
-    const stored = localStorage.getItem(MODE_KEY(provider));
-    if (stored && agentModes[provider].some((mode) => mode.id === stored)) return stored;
-  } catch {
-    /* storage unavailable */
-  }
-  return 'auto';
+  const stored = readPreference(MODE_KEY(provider));
+  return stored && agentModes[provider].some(mode => mode.id === stored) ? stored : 'auto';
 }
 
 export function writeStartMode(provider: Provider, mode: string) {
-  try {
-    localStorage.setItem(MODE_KEY(provider), mode);
-  } catch {
-    /* storage unavailable */
-  }
+  writePreference(MODE_KEY(provider), mode);
 }

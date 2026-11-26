@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { useEffect, useState } from 'react';
 import { readProjectSession, saveProjectSession } from '../projectSession.ts';
 import { request } from '../api.ts';
@@ -99,7 +100,7 @@ function Directory({
       {loading && !entries.length ? <p className="muted tree-loading">Chargement…</p> : null}
       {entries.map((entry) => (
         <div key={entry.path} role="none">
-          <button
+          <Button
             role="treeitem"
             aria-expanded={entry.directory ? expanded.has(entry.path) : undefined}
             aria-selected={selected === entry.path}
@@ -132,7 +133,7 @@ function Directory({
             )}
             <span className="truncate">{entry.name}</span>
             {entry.symlink ? <Icon name="arrow-ne" size={12} className="muted" /> : null}
-          </button>
+          </Button>
           {entry.directory && expanded.has(entry.path) ? (
             <div role="group">
               <Directory
@@ -149,9 +150,9 @@ function Directory({
         </div>
       ))}
       {nextOffset !== null ? (
-        <button className="text-button" onClick={() => void more()}>
+        <Button className="text-button" onClick={() => void more()}>
           Charger la suite
-        </button>
+        </Button>
       ) : null}
     </>
   );

@@ -1,3 +1,4 @@
+import { Button, TextInput } from './ui/Controls.tsx';
 import { useMemo, useState, type MouseEvent } from 'react';
 import { nextStatus, progress, relativeTime, statusLabels } from '../domain.ts';
 import type { Activity, Plan, Step } from '../types.ts';
@@ -95,27 +96,27 @@ export default function PlanPanel({
           <Icon name="plan" size={16} /> Plan
         </span>
         <span className="panel-heading-actions">
-          <button
-            className="icon-button"
+          <Button
+            variant="icon"
             onClick={onHistory}
             title="Historique des changements du plan"
             aria-label="Historique du plan"
           >
             <Icon name="history" size={15} />
-          </button>
+          </Button>
         </span>
       </div>
       <div className="plan-scroll">
         <header className="progress-goal">
           <h2>{plan.objective || 'Aucune tâche en cours'}</h2>
-          <button
+          <Button
             className="icon-button goal-edit"
             onClick={onEdit}
             aria-label="Modifier l’objectif"
             title="Modifier l’objectif"
           >
             <Icon name="edit" size={13} />
-          </button>
+          </Button>
           {untracked ? (
             <p className="progress-source">
               Repris d’une conversation
@@ -145,9 +146,9 @@ export default function PlanPanel({
                   votre prochain message.
                 </p>
                 {onAskProgress ? (
-                  <button className="text-button" onClick={onAskProgress}>
+                  <Button className="text-button" onClick={onAskProgress}>
                     <Icon name="refresh" size={13} /> Faire le point maintenant
-                  </button>
+                  </Button>
                 ) : null}
               </section>
             ) : (
@@ -184,7 +185,7 @@ export default function PlanPanel({
                       aria-label={`Étape : ${section.step.title}`}
                     >
                       <div className="doc-step-heading">
-                        <button
+                        <Button
                           className={`step-check ${untracked ? 'unknown' : section.step.status}`}
                           title={
                             untracked
@@ -195,7 +196,7 @@ export default function PlanPanel({
                           onClick={() => onStep(section.step, nextStatus(section.step.status))}
                         >
                           {untracked ? <Icon name="question" size={12} /> : <StepIcon status={section.step.status} />}
-                        </button>
+                        </Button>
                         <h3>{section.step.title}</h3>
                         {untracked ? null : section.step.status === 'in_progress' ? (
                           <span className="doc-step-badge">En cours</span>
@@ -215,7 +216,7 @@ export default function PlanPanel({
             <ol className="step-list">
               {listed.map((step) => (
                 <li key={step.id} className={`step-row ${untracked ? 'unknown' : step.status}`}>
-                  <button
+                  <Button
                     className={`step-check ${untracked ? 'unknown' : step.status}`}
                     title={
                       untracked
@@ -226,7 +227,7 @@ export default function PlanPanel({
                     onClick={() => onStep(step, nextStatus(step.status))}
                   >
                     {untracked ? <Icon name="question" size={12} /> : <StepIcon status={step.status} />}
-                  </button>
+                  </Button>
                   <div
                     className="step-text"
                     title={`${authorName(step.author)} · ${relativeTime(step.updatedAt)}`}
@@ -235,14 +236,14 @@ export default function PlanPanel({
                     {step.note && step.status !== 'in_progress' ? <p>{step.note}</p> : null}
                   </div>
                   {step.status === 'in_progress' ? (
-                    <button
+                    <Button
                       className="icon-button step-block"
                       title="Signaler un blocage"
                       aria-label={`Signaler un blocage : ${step.title}`}
                       onClick={() => onStep(step, 'blocked')}
                     >
                       <Icon name="warning" size={13} />
-                    </button>
+                    </Button>
                   ) : null}
                 </li>
               ))}
@@ -265,7 +266,7 @@ export default function PlanPanel({
               void add().catch(() => {});
             }}
           >
-            <input
+            <TextInput
               aria-label="Nouvelle étape"
               autoFocus
               placeholder="Étape à ajouter…"
@@ -274,23 +275,23 @@ export default function PlanPanel({
               onChange={(event) => setNewStep(event.target.value)}
             />
             <div>
-              <button type="button" className="text-button" onClick={() => setAdding(false)}>
+              <Button type="button" className="text-button" onClick={() => setAdding(false)}>
                 Annuler
-              </button>
-              <button className="button small" disabled={!newStep.trim()}>
+              </Button>
+              <Button className="button small" disabled={!newStep.trim()}>
                 Ajouter
-              </button>
+              </Button>
             </div>
           </form>
         ) : (
-          <button className="add-step" onClick={() => setAdding(true)}>
+          <Button className="add-step" onClick={() => setAdding(true)}>
             <Icon name="plus" size={14} /> Ajouter une étape
-          </button>
+          </Button>
         )}
         {verifications.length ? (
-          <button className="text-button progress-checks" onClick={onHistory}>
+          <Button className="text-button progress-checks" onClick={onHistory}>
             <Icon name="check" size={13} /> {verifications.length} vérification(s) enregistrée(s)
-          </button>
+          </Button>
         ) : null}
       </div>
     </aside>

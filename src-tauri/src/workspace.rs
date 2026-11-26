@@ -147,30 +147,12 @@ impl Workspace {
         if self.read(path)?["stamp"].as_str() != Some(stamp) {
             return Err("FILE_CONFLICT: le fichier a changé sur disque. Rechargez-le ou comparez avant de sauvegarder.".into());
         }
-        // Write beside the destination, preserve permissions, then replace atomically.
-        let temp = target.with_file_name(format!(".galeata-{}.tmp", uuid::Uuid::new_v4()));
-        let result = (|| -> Result<()> {
-            use std::io::Write;
-            let mut f = fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&temp)
-                .map_err(|e| e.to_string())?;
-            f.write_all(content.as_bytes()).map_err(|e| e.to_string())?;
-            f.set_permissions(
-                fs::metadata(&target)
-                    .map_err(|e| e.to_string())?
-                    .permissions(),
-            )
-            .map_err(|e| e.to_string())?;
-            f.sync_all().map_err(|e| e.to_string())?;
-            fs::rename(&temp, &target).map_err(|e| e.to_string())?;
+        crate::atomic_file::replace(&target, content.as_bytes(), || {
+            if self.read(path)?["stamp"].as_str() != Some(stamp) {
+                return Err("FILE_CONFLICT: le fichier a changé sur disque. Rechargez-le ou comparez avant de sauvegarder.".into());
+            }
             Ok(())
-        })();
-        if result.is_err() {
-            let _ = fs::remove_file(temp);
-        }
-        result?;
+        })?;
         self.read(path)
     }
     pub fn search(&self, query: &str, files: bool, offset: usize) -> Result<Value> {

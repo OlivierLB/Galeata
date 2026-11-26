@@ -1,8 +1,6 @@
 //! Claude Code `-p --input-format stream-json --output-format stream-json` adapter.
 
-use crate::event::{
-    AgentEvent, AgentState, ApprovalKind, Question, QuestionOption, ToolKind, TurnStatus,
-};
+use crate::event::{AgentEvent, AgentState, ApprovalKind, Question, ToolKind, TurnStatus};
 use crate::{
     head, relative, tail, Answer, Decision, Model, Output, Protocol, MAX_DETAIL, MAX_TOOL_OUTPUT,
 };
@@ -260,15 +258,7 @@ impl Claude {
             {
                 continue;
             }
-            let output = match &block["content"] {
-                Value::String(text) => text.clone(),
-                Value::Array(parts) => parts
-                    .iter()
-                    .filter_map(|p| p["text"].as_str())
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-                _ => String::new(),
-            };
+            let output = crate::content::tool_text(&block["content"]);
             out.events.push(AgentEvent::ToolCompleted {
                 item_id: block["tool_use_id"].as_str().unwrap_or_default().to_owned(),
                 ok: block["is_error"].as_bool() != Some(true),
@@ -318,15 +308,7 @@ impl Claude {
                     id: q["question"].as_str().unwrap_or_default().to_owned(),
                     header: q["header"].as_str().unwrap_or_default().to_owned(),
                     question: q["question"].as_str().unwrap_or_default().to_owned(),
-                    options: q["options"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|o| QuestionOption {
-                            label: o["label"].as_str().unwrap_or_default().to_owned(),
-                            description: o["description"].as_str().unwrap_or_default().to_owned(),
-                        })
-                        .collect(),
+                    options: crate::content::question_options(&q["options"]),
                     multi_select: q["multiSelect"].as_bool().unwrap_or(false),
                     allow_other: true,
                 })

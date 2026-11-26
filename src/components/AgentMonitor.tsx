@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { useMemo, useState, useSyncExternalStore } from 'react';
 import { agentStore } from '../agents/store.ts';
 import { interruptAgent } from '../agents/api.ts';
@@ -73,8 +74,8 @@ export default function AgentMonitor({ events, plan, onConversation, onOpen, onD
     <summary>Suivi des agents <span>{active} {active === 1 ? 'mission active' : 'missions actives'} · {blocked} {blocked === 1 ? 'blocage' : 'blocages'} · {delegations.length} {delegations.length === 1 ? 'appel de délégation' : 'appels de délégation'}</span></summary>
     <div className="agent-monitor-body">
       <div className="agent-monitor-toolbar">
-        <button className="text-button" aria-pressed={filter === 'active'} onClick={() => setFilter('active')}>En cours et bloqués</button>
-        <button className="text-button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>Inclure les terminés</button>
+        <Button className="text-button" aria-pressed={filter === 'active'} onClick={() => setFilter('active')}>En cours et bloqués</Button>
+        <Button className="text-button" aria-pressed={filter === 'all'} onClick={() => setFilter('all')}>Inclure les terminés</Button>
         <small>États déclarés par les agents · dernière mise à jour indiquée sur chaque mission</small>
       </div>
       {!visible.length ? <p className="muted">Aucune mission déclarée en cours. Les délégations visibles sont affichées ci-dessous.</p> : null}
@@ -95,12 +96,12 @@ export default function AgentMonitor({ events, plan, onConversation, onOpen, onD
           {step ? <p>Étape : {step.title}</p> : null}
           {parentMission ? <p>Rattaché à : {parentMission.message}</p> : null}
           <div className="agent-mission-actions">
-            {parent ? <button className="text-button" onClick={() => onConversation(parent.id)}>Ouvrir la conversation pilote</button> : <small>Conversation pilote non reliée</small>}
-            {parent && parent.busy && parent.state !== 'exited' ? <button className="text-button" disabled={!!stopping}
-              onClick={() => { setStopping(parent.id); void interruptAgent(parent.id).catch(onError).finally(() => setStopping('')); }}>Interrompre la conversation pilote</button> : null}
+            {parent ? <Button className="text-button" onClick={() => onConversation(parent.id)}>Ouvrir la conversation pilote</Button> : <small>Conversation pilote non reliée</small>}
+            {parent && parent.busy && parent.state !== 'exited' ? <Button className="text-button" disabled={!!stopping}
+              onClick={() => { setStopping(parent.id); void interruptAgent(parent.id).catch(onError).finally(() => setStopping('')); }}>Interrompre la conversation pilote</Button> : null}
           </div>
           {files.length ? <details><summary>{files.length} {files.length === 1 ? 'fichier concerné' : 'fichiers concernés'}</summary>
-            {files.map(path => <div className="agent-mission-actions" key={path}><button className="text-button" onClick={() => onOpen(path)}>{path}</button><button className="text-button" onClick={() => onDiff(path)}>Voir le diff</button></div>)}
+            {files.map(path => <div className="agent-mission-actions" key={path}><Button className="text-button" onClick={() => onOpen(path)}>{path}</Button><Button className="text-button" onClick={() => onDiff(path)}>Voir le diff</Button></div>)}
           </details> : null}
           <details><summary>Dernières mises à jour</summary>{history.map(item => <p key={item.id}>{new Date(item.createdAt).toLocaleTimeString('fr-FR')} · {item.message}</p>)}</details>
         </article>;
@@ -109,7 +110,7 @@ export default function AgentMonitor({ events, plan, onConversation, onOpen, onD
         <p className="muted">La fin d’un appel ne garantit pas que le sous-agent est arrêté. Le suivi détaillé dépend des informations transmises par l’agent pilote.</p>
         {delegations.map(({ conversation, item }) => <article className="agent-mission" key={`${conversation.id}:${item.id}`}>
           <div className="agent-mission-heading"><strong>{item.title || 'Délégation'}</strong><span>{item.running ? 'Appel en cours' : item.ok === false ? 'Appel en échec' : 'Appel terminé'}</span></div>
-          <button className="text-button" onClick={() => onConversation(conversation.id)}>Voir dans {providerNames[conversation.provider]}</button>
+          <Button className="text-button" onClick={() => onConversation(conversation.id)}>Voir dans {providerNames[conversation.provider]}</Button>
           {reportedAgents(item.output).map(agent => <div key={agent.id} className="agent-reported-state">
             <strong>{agent.id.slice(0, 12)}</strong> · {agent.status} <small>(dernier état transmis)</small>
             {agent.message ? <details><summary>Résultat du sous-agent</summary><p>{agent.message}</p></details> : null}

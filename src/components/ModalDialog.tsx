@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { Icon } from './Icon.tsx';
 
@@ -25,7 +26,7 @@ export default function ModalDialog({ title, closeLabel, className = '', onClose
       else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     }}>
     <div className="dialog-heading"><h2 id={heading}>{title}</h2>
-      <button autoFocus className="icon-button" aria-label={closeLabel} onClick={onClose}><Icon name="close" /></button>
+      <Button autoFocus variant="icon" aria-label={closeLabel} onClick={onClose}><Icon name="close" /></Button>
     </div>
     {children}
   </dialog>;

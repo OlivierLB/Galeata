@@ -1,8 +1,7 @@
 //! Codex `app-server` (JSON-RPC over stdio) adapter.
 
 use crate::event::{
-    AgentEvent, AgentState, ApprovalKind, FileChange, Question, QuestionOption, ToolKind,
-    TurnStatus,
+    AgentEvent, AgentState, ApprovalKind, FileChange, Question, ToolKind, TurnStatus,
 };
 use crate::{
     head, relative, tail, Answer, Decision, Model, Output, Protocol, MAX_DETAIL, MAX_TOOL_OUTPUT,
@@ -476,15 +475,7 @@ impl Codex {
                     id: q["id"].as_str().unwrap_or_default().to_owned(),
                     header: q["header"].as_str().unwrap_or_default().to_owned(),
                     question: q["question"].as_str().unwrap_or_default().to_owned(),
-                    options: q["options"]
-                        .as_array()
-                        .into_iter()
-                        .flatten()
-                        .map(|o| QuestionOption {
-                            label: o["label"].as_str().unwrap_or_default().to_owned(),
-                            description: o["description"].as_str().unwrap_or_default().to_owned(),
-                        })
-                        .collect(),
+                    options: crate::content::question_options(&q["options"]),
                     multi_select: false,
                     // Without options, the answer is free text.
                     allow_other: q["isOther"].as_bool().unwrap_or(false)
