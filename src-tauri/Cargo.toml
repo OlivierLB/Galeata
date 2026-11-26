@@ -37,7 +37,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 portable-pty = "0.9"
 notify = "8"
 uuid = { version = "1", features = ["v4"] }
-sha2 = "0.10"
+sha2 = "0.11"
 thiserror = "2"
 ureq = { version = "2.12", features = ["json"] }
 keyring = { version = "3", features = ["sync-secret-service"] }
