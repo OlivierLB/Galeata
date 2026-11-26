@@ -2694,20 +2694,6 @@ body.resizing-horizontal * {
   line-height: 1.4;
   white-space: nowrap;
 }
-.mascot-motion {
-  position: absolute;
-  top: 0;
-  right: -2px;
-  padding: 2px 4px;
-  font-size: 10px;
-  color: var(--muted);
-  opacity: 0.55;
-  border-radius: 4px;
-}
-.mascot-motion:hover, .mascot-motion:focus-visible {
-  color: var(--accent);
-  opacity: 1;
-}
 .mascot-fallback {
   position: absolute;
   inset: 12px 0;
@@ -2726,12 +2712,7 @@ body.resizing-horizontal * {
   height: 42px;
   border-radius: 4px;
 }
-.turtle-mascot.compact .mascot-motion {
-  top: 0;
-  right: 0;
-  padding: 1px 3px;
-  font-size: 9px;
-}
+
 .turtle-mascot.compact .mascot-fallback {
   inset: 5px 0;
   font-size: 24px;

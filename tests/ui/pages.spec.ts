@@ -88,3 +88,20 @@ test('Ctrl+P ouvre un fichier par son nom dans les fichiers', async ({ page }) =
   await page.keyboard.press('Control+p');
   await expect(palette).toBeVisible();
 });
+
+
+test('le plan et son séparateur sont réservés aux agents', async ({ page }) => {
+  await page.goto('/');
+  const plan = page.locator('.plan-panel');
+  const divider = page.getByRole('separator', { name: 'Largeur du plan' });
+  await expect(plan).toBeVisible();
+  await expect(divider).toBeVisible();
+  for (const name of ['Fichiers', 'Git', 'Outils IA', 'Historique']) {
+    await page.getByRole('button', { name, exact: true }).click();
+    await expect(plan).toHaveCount(0);
+    await expect(divider).toHaveCount(0);
+  }
+  await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
+  await expect(plan).toBeVisible();
+  await expect(divider).toBeVisible();
+});

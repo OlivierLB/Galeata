@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
-test('la mascotte peut être mise en pause et le choix est mémorisé', async ({ page }) => {
+test('la mascotte reste animée sans commande play/pause', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('galeata:mascot-motion', 'false'));
   await page.goto('/');
   const mascot = page.locator('.turtle-mascot');
   await expect(mascot).toHaveCount(1);
@@ -11,14 +12,9 @@ test('la mascotte peut être mise en pause et le choix est mémorisé', async ({
   expect(size.width).toBeLessThanOrEqual(40);
   expect(size.height).toBeLessThanOrEqual(46);
   await expect(mascot.locator('canvas')).toHaveAttribute('data-frame', /\d/);
-  await mascot.getByRole('button', { name: 'Mettre la mascotte en pause' }).click();
-  await expect(mascot).toHaveAttribute('data-moving', 'false');
-  const frame = await mascot.locator('canvas').getAttribute('data-frame');
-  await page.waitForTimeout(650);
-  await expect(mascot.locator('canvas')).toHaveAttribute('data-frame', frame!);
+  await expect(mascot.getByRole('button')).toHaveCount(1);
+  await expect(mascot).toHaveAttribute('data-moving', 'true');
   await page.reload();
-  await expect(mascot).toHaveAttribute('data-moving', 'false');
-  await mascot.getByRole('button', { name: 'Animer la mascotte' }).click();
   await expect(mascot).toHaveAttribute('data-moving', 'true');
   await mascot.getByRole('button', { name: 'Faire danser la mascotte' }).click();
   await expect(mascot).toHaveAttribute('data-animation', 'working');

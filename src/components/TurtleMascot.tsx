@@ -1,32 +1,21 @@
 import { Button } from './ui/Controls.tsx';
-import { Icon } from './Icon.tsx';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { animations } from '../mascot/animations.ts';
 import { mascot } from '../mascot/store.ts';
 import { FRAME_HEIGHT, FRAME_WIDTH, spriteAtlas } from '../mascot/sprites.ts';
 
-const MOTION_KEY = 'galeata:mascot-motion';
-function readMotion() {
-  try { return localStorage.getItem(MOTION_KEY) !== 'false'; }
-  catch { return true; }
-}
-
 export default function TurtleMascot({ agentId, compact = false }: { agentId?: string; compact?: boolean }) {
   const snapshot = useSyncExternalStore(mascot.subscribe, useCallback(() => mascot.getOverview(agentId), [agentId]));
-  const [motion, setMotion] = useState(readMotion);
   const [reduced, setReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
   const [failed, setFailed] = useState(false);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const moving = motion && !reduced;
+  const moving = !reduced;
   useEffect(() => {
     const media = matchMedia('(prefers-reduced-motion: reduce)');
     const changed = () => setReduced(media.matches);
     media.addEventListener('change', changed);
     return () => media.removeEventListener('change', changed);
   }, []);
-  useEffect(() => {
-    try { localStorage.setItem(MOTION_KEY, String(motion)); } catch { /* optional storage */ }
-  }, [motion]);
   useEffect(() => {
     let disposed = false;
     let tick: number | undefined;
@@ -116,11 +105,7 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
         {failed ? <span className="mascot-fallback" aria-hidden="true">🐢</span> : null}
       </Button>
       {!compact ? <span className="mascot-caption">{snapshot.label}</span> : null}
-      {!reduced ? (
-        <Button className="mascot-motion" aria-label={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
-          title={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
-          onClick={() => setMotion((value) => !value)}><Icon name={motion ? "pause" : "play"} size={12} /></Button>
-      ) : null}
+
     </div>
   );
 }
