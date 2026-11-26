@@ -7,6 +7,14 @@
 set -eu
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+# Serialise shared build outputs and the per-user installation across sessions.
+lock_directory="${XDG_CACHE_HOME:-$HOME/.cache}/galeata"
+mkdir -p "$lock_directory"
+exec 9>"$lock_directory/install-local.lock"
+if ! flock -n 9; then
+    printf 'Une installation Galeata est déjà en cours ; attente de sa fin.\n'
+    flock 9
+fi
 sh "$root/scripts/build-linux-docker.sh"
 GALEATA_DOWNLOAD_URL="file://$root/release-local" sh "$root/install.sh"
 
