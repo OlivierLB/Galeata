@@ -1,3 +1,4 @@
+import { TextArea } from './ui/Controls.tsx';
 import { useRef } from 'react';
 import type { OpenFile } from '../types.ts';
 
@@ -42,7 +43,7 @@ export default function SimpleEditor({
             .map((_, index) => index + 1)
             .join('\n')}
         </pre>
-        <textarea
+        <TextArea
           spellCheck={false}
           aria-label={`Éditeur ${file.path}`}
           value={file.content}

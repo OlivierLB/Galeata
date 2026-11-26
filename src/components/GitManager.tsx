@@ -1,3 +1,4 @@
+import { Text, Button, Select, TextInput } from './ui/Controls.tsx';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from '../api.ts';
 import type { GitBranch, GitOverview, GitStatus } from '../types.ts';
@@ -27,38 +28,38 @@ export function GitToolbar({
   return (
     <div className="git-toolbar" aria-label="Actions Git">
       <div className="git-toolbar-group">
-        <button className="button secondary small" onClick={() => onManage('branches')}>
+        <Button className="button secondary small" onClick={() => onManage('branches')}>
           <Icon name="branch" size={14} /> Branches
-        </button>
-        <button className="button secondary small" onClick={() => onManage('stashes')}>
+        </Button>
+        <Button className="button secondary small" onClick={() => onManage('stashes')}>
           <Icon name="history" size={14} /> Stash
-        </button>
+        </Button>
       </div>
       <div className="git-toolbar-group">
-        <button
+        <Button
           className="text-button"
           disabled={busy}
           title="Fetch : récupérer les références de tous les dépôts distants sans modifier vos fichiers"
           onClick={() => onMutate('fetch')}
         >
           Récupérer
-        </button>
-        <button
+        </Button>
+        <Button
           className="text-button"
           disabled={busy || !git.upstream || git.merging}
           title="Pull : mettre à jour la branche active, uniquement en avance rapide"
           onClick={() => onMutate('pull')}
         >
           Mettre à jour
-        </button>
-        <button
+        </Button>
+        <Button
           className="text-button"
           disabled={busy || git.merging || git.detached}
           title="Push : publier les commits de la branche active"
           onClick={() => (git.upstream ? onMutate('push') : onManage('branches'))}
         >
           Publier
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -194,14 +195,14 @@ export default function GitManager({
           <span className="eyebrow">GÉRER LE DÉPÔT</span>
           <h2 id="git-manager-title">Branches et stash</h2>
         </div>
-        <button
-          className="icon-button"
+        <Button
+          variant="icon"
           disabled={blocked}
           aria-label="Fermer la gestion Git"
           onClick={onClose}
         >
           <Icon name="close" />
-        </button>
+        </Button>
       </div>
       <div className="git-current-branch">
         <Icon name="branch" size={18} />
@@ -232,14 +233,14 @@ export default function GitManager({
           </p>
           {git.merging ? (
             <div className="git-toolbar-group">
-              <button
+              <Button
                 className="button secondary small"
                 disabled={blocked || dirty || !!conflicts}
                 onClick={() => void perform('mergeContinue', {}, 'Fusion terminée.')}
               >
                 Terminer la fusion
-              </button>
-              <button
+              </Button>
+              <Button
                 className="text-button"
                 disabled={blocked || dirty}
                 onClick={() =>
@@ -254,14 +255,14 @@ export default function GitManager({
                 }
               >
                 Annuler la fusion
-              </button>
+              </Button>
             </div>
           ) : null}
         </div>
       ) : null}
       <div className="git-manager-tabs" role="tablist" aria-label="Gestion du dépôt">
         {(['branches', 'stashes'] as const).map((value) => (
-          <button
+          <Button
             key={value}
             role="tab"
             aria-selected={tab === value}
@@ -275,16 +276,16 @@ export default function GitManager({
             {value === 'branches'
               ? `Branches (${data.branches.length})`
               : `Stash (${data.stashes.length})`}
-          </button>
+          </Button>
         ))}
-        <button
-          className="icon-button"
+        <Button
+          variant="icon"
           aria-label="Actualiser les branches et stash"
           disabled={blocked || loading}
           onClick={() => void load()}
         >
           <Icon name="refresh" size={15} />
-        </button>
+        </Button>
       </div>
       {error ? (
         <p role="alert" className="inline-error git-operation-error">
@@ -302,8 +303,8 @@ export default function GitManager({
           <h3>{pending.title}</h3>
           <p>{pending.description}</p>
           <div className="dialog-actions">
-            <button
-              className="button secondary"
+            <Button
+              variant="secondary"
               disabled={blocked}
               onClick={() => {
                 setPending(null);
@@ -311,20 +312,20 @@ export default function GitManager({
               }}
             >
               Retour
-            </button>
-            <button
-              className="button"
+            </Button>
+            <Button
+              variant="primary"
               disabled={blocked || dirty}
               onClick={() => void perform(pending.action, pending.args)}
             >
               {blocked ? 'En cours…' : pending.submit}
-            </button>
+            </Button>
           </div>
         </section>
       ) : tab === 'branches' ? (
         <>
           <div className="git-sync-actions">
-            <button
+            <Button
               className="button secondary small"
               disabled={blocked}
               onClick={() =>
@@ -336,18 +337,18 @@ export default function GitManager({
               }
             >
               Récupérer (fetch)
-            </button>
-            <button
+            </Button>
+            <Button
               className="button secondary small"
               disabled={!canChange || !git.upstream}
               onClick={() => void perform('pull', {}, 'Branche mise à jour en avance rapide.')}
             >
               Mettre à jour (pull)
-            </button>
+            </Button>
             {!git.upstream && data.remotes.length ? (
               <label>
                 Dépôt distant
-                <select
+                <Select
                   aria-label="Dépôt distant pour publier"
                   value={remote}
                   onChange={(event) => setRemote(event.target.value)}
@@ -356,10 +357,10 @@ export default function GitManager({
                   {data.remotes.map((value) => (
                     <option key={value}>{value}</option>
                   ))}
-                </select>
+                </Select>
               </label>
             ) : null}
-            <button
+            <Button
               className="button secondary small"
               disabled={blocked || !data.remotes.length || git.detached || git.merging}
               onClick={() =>
@@ -367,7 +368,7 @@ export default function GitManager({
               }
             >
               Publier (push)
-            </button>
+            </Button>
           </div>
           <p className="small-copy muted">
             Pour fusionner vers une autre destination, activez-la d’abord, puis choisissez la
@@ -375,7 +376,7 @@ export default function GitManager({
           </p>
           <div className="search-input">
             <Icon name="search" size={15} />
-            <input
+            <TextInput
               aria-label="Filtrer les branches"
               value={filter}
               placeholder="Filtrer les branches…"
@@ -410,22 +411,22 @@ export default function GitManager({
                         </div>
                         {!branch.current ? (
                           <div className="git-toolbar-group">
-                            <button
+                            <Button
                               className="text-button"
                               disabled={!canChange || branch.inWorktree}
                               aria-label={`Activer ${branch.name}`}
                               onClick={() => switchBranch(branch)}
                             >
                               Activer
-                            </button>
-                            <button
+                            </Button>
+                            <Button
                               className="text-button"
                               disabled={!canChange || git.detached}
                               aria-label={`Fusionner ${branch.name} dans ${git.branch}`}
                               onClick={() => mergeBranch(branch)}
                             >
                               Fusionner
-                            </button>
+                            </Button>
                           </div>
                         ) : (
                           <Icon name="check" size={16} />
@@ -433,10 +434,10 @@ export default function GitManager({
                       </div>
                     ))}
                   {!branches.some((branch) => branch.remote === (kind === 'remote')) ? (
-                    <p className="muted small-copy">
+                    <Text tone="muted" className="small-copy">
                       Aucune branche {kind === 'local' ? 'locale' : 'distante'}
                       {filter ? ' correspondante' : ''}.
-                    </p>
+                    </Text>
                   ) : null}
                 </section>
               ))
@@ -451,7 +452,7 @@ export default function GitManager({
           >
             <label htmlFor="new-git-branch">Nouvelle branche depuis {git.branch}</label>
             <div>
-              <input
+              <TextInput
                 id="new-git-branch"
                 required
                 value={name}
@@ -459,9 +460,9 @@ export default function GitManager({
                 disabled={!canChange}
                 onChange={(event) => setName(event.target.value)}
               />
-              <button className="button small" disabled={!canChange || !name.trim()}>
+              <Button className="button small" disabled={!canChange || !name.trim()}>
                 Créer et activer
-              </button>
+              </Button>
             </div>
           </form>
         </>
@@ -475,21 +476,21 @@ export default function GitManager({
             }}
           >
             <label htmlFor="new-git-stash">Mettre les modifications de côté</label>
-            <p className="muted small-copy">
+            <Text tone="muted" className="small-copy">
               Inclut les fichiers suivis et non suivis, sauf ceux ignorés par Git. Vous pourrez les
               restaurer sur la branche souhaitée.
-            </p>
+            </Text>
             <div>
-              <input
+              <TextInput
                 id="new-git-stash"
                 value={message}
                 placeholder="Description facultative du stash"
                 disabled={!canChange}
                 onChange={(event) => setMessage(event.target.value)}
               />
-              <button className="button small" disabled={!canChange || !git.files.length}>
+              <Button className="button small" disabled={!canChange || !git.files.length}>
                 Créer le stash
-              </button>
+              </Button>
             </div>
           </form>
           <div className="git-stash-list" aria-busy={loading}>
@@ -501,7 +502,7 @@ export default function GitManager({
                   <code>{stash.id}</code>
                   <p>{stash.message}</p>
                   <div className="git-toolbar-group">
-                    <button
+                    <Button
                       className="button secondary small"
                       disabled={!canChange}
                       onClick={() =>
@@ -515,8 +516,8 @@ export default function GitManager({
                       }
                     >
                       Appliquer et conserver
-                    </button>
-                    <button
+                    </Button>
+                    <Button
                       className="button secondary small"
                       disabled={!canChange}
                       onClick={() =>
@@ -530,7 +531,7 @@ export default function GitManager({
                       }
                     >
                       Restaurer et retirer (pop)
-                    </button>
+                    </Button>
                   </div>
                 </article>
               ))
@@ -546,9 +547,9 @@ export default function GitManager({
         </>
       )}
       <div className="dialog-actions">
-        <button className="button secondary" disabled={blocked} onClick={onClose}>
+        <Button variant="secondary" disabled={blocked} onClick={onClose}>
           Fermer
-        </button>
+        </Button>
       </div>
     </dialog>
   );

@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { Icon } from './Icon.tsx';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { animations } from '../mascot/animations.ts';
@@ -108,17 +109,17 @@ export default function TurtleMascot({ agentId, compact = false }: { agentId?: s
   }, [snapshot.animation, moving]);
   return (
     <div className={`turtle-mascot ${compact ? 'compact' : ''}`} data-animation={snapshot.animation} data-moving={moving}>
-      <button className="mascot-greet" title={`${snapshot.label} · Faire danser la mascotte`} aria-label="Faire danser la mascotte"
+      <Button className="mascot-greet" title={`${snapshot.label} · Faire danser la mascotte`} aria-label="Faire danser la mascotte"
         onClick={() => mascot.react('play', agentId)}>
         <canvas ref={canvas} width={FRAME_WIDTH} height={FRAME_HEIGHT}
           role="img" aria-label={`Mascotte : ${snapshot.label}`} />
         {failed ? <span className="mascot-fallback" aria-hidden="true">🐢</span> : null}
-      </button>
+      </Button>
       {!compact ? <span className="mascot-caption">{snapshot.label}</span> : null}
       {!reduced ? (
-        <button className="mascot-motion" aria-label={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
+        <Button className="mascot-motion" aria-label={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
           title={motion ? 'Mettre la mascotte en pause' : 'Animer la mascotte'}
-          onClick={() => setMotion((value) => !value)}><Icon name={motion ? "pause" : "play"} size={12} /></button>
+          onClick={() => setMotion((value) => !value)}><Icon name={motion ? "pause" : "play"} size={12} /></Button>
       ) : null}
     </div>
   );

@@ -1,3 +1,4 @@
+import { Button, TextArea, TextInput } from './components/ui/Controls.tsx';
 import ChecksDialog from './components/checks/ChecksDialog.tsx';
 import ChecksStatusButton from './components/checks/ChecksStatusButton.tsx';
 import { latestMissions } from './components/AgentMonitor.tsx';
@@ -952,7 +953,7 @@ export default function App() {
               key={file.path}
               className={`editor-tab ${active === file.path && !diff ? 'active' : ''}`}
             >
-              <button
+              <Button
                 role="tab"
                 aria-selected={active === file.path && !diff}
                 aria-label={file.path.split('/').pop()}
@@ -967,62 +968,62 @@ export default function App() {
                 </span>
                 {file.path.split('/').pop()}
                 {file.content !== file.savedContent ? <span className="dirty-dot" /> : null}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="tab-close"
                 aria-label={`Fermer ${file.path}`}
                 onClick={() => closeTab(file.path)}
               >
                 <Icon name="close" size={12} />
-              </button>
+              </Button>
             </div>
           ))}
           {diff ? (
             <div className="editor-tab active">
-              <button role="tab" aria-selected="true">
+              <Button role="tab" aria-selected="true">
                 <Icon name="git" size={13} />
                 {diff.path.split('/').pop()} · {diff.staged ? 'indexé' : 'diff'}
                 {diff.editable && activeFile?.path === diff.path && activeFile.content !== activeFile.savedContent ? <span className="dirty-dot" /> : null}
-              </button>
-              <button
+              </Button>
+              <Button
                 className="tab-close"
                 aria-label="Fermer le diff"
                 onClick={() => setDiff(null)}
               >
                 <Icon name="close" size={12} />
-              </button>
+              </Button>
             </div>
           ) : null}
           {!tabs.length && !diff ? <span className="empty-tab">Bienvenue dans Galeata</span> : null}
         </div>
         <div className="editor-tab-actions">
-          <button
-            className="icon-button"
+          <Button
+            variant="icon"
             title="Enregistrer le fichier"
             aria-label="Enregistrer le fichier"
             disabled={!activeFile || (!!diff && !editorDiff?.editable)}
             onClick={() => void saveFile(active).catch(() => {})}
           >
             <Icon name="save" size={14} />
-          </button>
-          <button
-            className="icon-button"
+          </Button>
+          <Button
+            variant="icon"
             title="Renommer le fichier"
             aria-label="Renommer le fichier"
             disabled={!activeFile}
             onClick={() => fileAction('rename')}
           >
             <Icon name="edit" size={14} />
-          </button>
-          <button
-            className="icon-button"
+          </Button>
+          <Button
+            variant="icon"
             title="Supprimer le fichier"
             aria-label="Supprimer le fichier"
             disabled={!activeFile}
             onClick={() => fileAction('delete')}
           >
             <Icon name="trash" size={14} />
-          </button>
+          </Button>
         </div>
       </div>
       {displayFile ? (
@@ -1042,7 +1043,7 @@ export default function App() {
             <div className="conflict-banner">
               <Icon name="warning" size={15} />
               <span>Ce fichier a changé sur disque. Vos modifications sont conservées.</span>
-              <button
+              <Button
                 className="text-button"
                 onClick={() => {
                   void request<{ content: string; stamp: string }>('workspace.read', {
@@ -1061,8 +1062,8 @@ export default function App() {
                 }}
               >
                 Comparer
-              </button>
-              <button
+              </Button>
+              <Button
                 className="text-button"
                 onClick={() =>
                   setDialog({
@@ -1094,7 +1095,7 @@ export default function App() {
                 }
               >
                 Recharger
-              </button>
+              </Button>
             </div>
           ) : null}
           <Suspense fallback={<div className="loading-editor">Préparation de l’éditeur…</div>}>
@@ -1123,9 +1124,9 @@ export default function App() {
                 Choisissez un fichier modifié dans Contrôle de source pour relire ses changements.
               </p>
               {git.files.length ? (
-                <button className="button" onClick={() => void showDiff(git.files[0].path)}>
+                <Button variant="primary" onClick={() => void showDiff(git.files[0].path)}>
                   Relire {git.files[0].path}
-                </button>
+                </Button>
               ) : (
                 <p className="muted">Aucun changement local.</p>
               )}
@@ -1145,16 +1146,16 @@ export default function App() {
           <img src={theme === 'night' ? '/galeata-logo-night.svg' : '/galeata-logo.svg'} alt="Galeata" />
         </div>
         <div className="topbar-divider" />
-        <button className="workspace-picker" title={workspace ? "Ouvrir un projet dans une nouvelle fenêtre" : "Ouvrir un projet"} onClick={openFolder}>
+        <Button className="workspace-picker" title={workspace ? "Ouvrir un projet dans une nouvelle fenêtre" : "Ouvrir un projet"} onClick={openFolder}>
           <Icon name="folder" size={15} />
           <span>{workspace?.name ?? 'Ouvrir un projet'}</span>
           <Icon name="chevron" size={12} className="rotated" />
-        </button>
-        <button className="command-trigger" onClick={() => setPalette(true)}>
+        </Button>
+        <Button className="command-trigger" onClick={() => setPalette(true)}>
           <Icon name="search" size={14} />
           <span>Rechercher un fichier ou une action…</span>
           <kbd>Ctrl P</kbd>
-        </button>
+        </Button>
         <div className="topbar-actions">
           {!desktop ? (
             <span className="preview-badge">APERÇU INTERFACE</span>
@@ -1171,7 +1172,7 @@ export default function App() {
         <nav className="activity-rail" aria-label="Navigation principale">
           <div>
             {navigation.map((item, index) => (
-              <button
+              <Button
                 key={item.id}
                 className={`rail-button ${panel === item.id ? 'active' : ''}`}
                 title={item.label}
@@ -1187,11 +1188,11 @@ export default function App() {
                 ) : item.id === 'agents' ? (
                   <AgentCountBadge events={activities} />
                 ) : null}
-              </button>
+              </Button>
             ))}
           </div>
           <div>
-            <button
+            <Button
               className="rail-button"
               title="Historique"
               aria-label="Historique"
@@ -1201,15 +1202,15 @@ export default function App() {
               }}
             >
               <Icon name="history" size={21} />
-            </button>
-            <button
+            </Button>
+            <Button
               className={`rail-button ${preferencesOpen ? 'active' : ''}`}
               aria-label="Préférences"
               title="Préférences"
               onClick={openPreferences}
             >
               <Icon name="settings" size={21} />
-            </button>
+            </Button>
             <TurtleMascot compact agentId={mascotAgent || undefined} />
           </div>
         </nav>
@@ -1217,8 +1218,8 @@ export default function App() {
         <aside className="sidebar" style={{ width: sidebarWidth }}>
           <div className="panel-heading">
             <span>{panelNames[panel]}</span>
-            <button
-              className="icon-button"
+            <Button
+              variant="icon"
               aria-label="Actualiser"
               title="Actualiser"
               disabled={!workspace}
@@ -1228,15 +1229,15 @@ export default function App() {
               }}
             >
               <Icon name="refresh" size={14} />
-            </button>
+            </Button>
           </div>
           {!workspace ? (
             <div className="sidebar-empty">
               <Icon name="folder" size={25} />
               <p>Votre prochain projet commence ici.</p>
-              <button className="button small" onClick={openFolder}>
+              <Button className="button small" onClick={openFolder}>
                 Ouvrir un dossier
-              </button>
+              </Button>
             </div>
           ) : (
             <>
@@ -1248,27 +1249,27 @@ export default function App() {
                       {workspace.name.toUpperCase()}
                     </span>
                     <div>
-                      <button
-                        className="icon-button"
+                      <Button
+                        variant="icon"
                         title="Nouveau fichier"
                         aria-label="Nouveau fichier"
                         onClick={() => fileAction('create')}
                       >
                         <Icon name="plus" size={14} />
-                      </button>
-                      <button
-                        className="icon-button"
+                      </Button>
+                      <Button
+                        variant="icon"
                         title="Nouveau dossier"
                         aria-label="Nouveau dossier"
                         onClick={() => fileAction('create', true)}
                       >
                         <Icon name="folder" size={14} />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                   <div className="file-tools" role="group" aria-label="Outils des fichiers">
-                    <button className="text-button" aria-pressed={!fileSearchVisible} onClick={() => setFileSearchVisible(false)}><Icon name="folder" size={14} /> Arborescence</button>
-                    <button className="text-button" aria-pressed={fileSearchVisible} title="Chercher dans le contenu (Ctrl+Shift+F)" onClick={openProjectSearch}><Icon name="search" size={14} /> Contenu</button>
+                    <Button className="text-button" aria-pressed={!fileSearchVisible} onClick={() => setFileSearchVisible(false)}><Icon name="folder" size={14} /> Arborescence</Button>
+                    <Button className="text-button" aria-pressed={fileSearchVisible} title="Chercher dans le contenu (Ctrl+Shift+F)" onClick={openProjectSearch}><Icon name="search" size={14} /> Contenu</Button>
                   </div>
                   {fileSearchVisible ? <FileSearch query={query} hits={hits} searching={searching}
                     hasMore={searchNext !== null} onQuery={setQuery}
@@ -1295,10 +1296,10 @@ export default function App() {
                         </span>
                         <CountBadge count={git.files.length} label="fichiers modifiés" />
                       </div>
-                      <button className="sidebar-action" onClick={() => setGitManager('branches')}><Icon name="branch" size={15} /> Branches et synchronisation</button>
-                      <button className="sidebar-action" onClick={() => setGitManager('stashes')}><Icon name="history" size={15} /> Mettre de côté / restaurer</button>
-                      {git.merging || git.files.some((file) => file.conflicted) ? <div className="git-notice"><strong>{git.merging ? 'Fusion en cours' : 'Conflits à résoudre'}</strong><p>Corrigez les fichiers en conflit, puis indexez-les.</p><button className="text-button" onClick={() => setGitManager('branches')}>Suivre la résolution</button></div> : null}
-                      <textarea
+                      <Button className="sidebar-action" onClick={() => setGitManager('branches')}><Icon name="branch" size={15} /> Branches et synchronisation</Button>
+                      <Button className="sidebar-action" onClick={() => setGitManager('stashes')}><Icon name="history" size={15} /> Mettre de côté / restaurer</Button>
+                      {git.merging || git.files.some((file) => file.conflicted) ? <div className="git-notice"><strong>{git.merging ? 'Fusion en cours' : 'Conflits à résoudre'}</strong><p>Corrigez les fichiers en conflit, puis indexez-les.</p><Button className="text-button" onClick={() => setGitManager('branches')}>Suivre la résolution</Button></div> : null}
+                      <TextArea
                         className="commit-input"
                         aria-label="Message de commit"
                         placeholder="Décrire les changements…"
@@ -1306,7 +1307,7 @@ export default function App() {
                         value={commitMessage}
                         onChange={(event) => setCommitMessage(event.target.value)}
                       />
-                      <button
+                      <Button
                         className="button full"
                         disabled={!commitMessage.trim() || !!busy}
                         onClick={() =>
@@ -1317,14 +1318,14 @@ export default function App() {
                       >
                         <Icon name="check" size={15} />
                         Créer le commit
-                      </button>
+                      </Button>
                       <div className="section-line">
                         <h3>Changements</h3>
                         <CountBadge count={git.files.length} label="fichiers modifiés" />
                       </div>
                       {git.files.map((file) => (
                         <div className="git-file" key={file.path}>
-                          <button
+                          <Button
                             className="truncate"
                             title={`Diff non indexé : ${file.path}`}
                             onClick={() => void showDiff(file.path, false)}
@@ -1333,19 +1334,19 @@ export default function App() {
                               {file.worktree === ' ' ? file.index : file.worktree}
                             </span>
                             {file.path}
-                          </button>
+                          </Button>
                           {file.index !== ' ' && file.index !== '?' ? (
                             <>
-                              <button
-                                className="icon-button"
+                              <Button
+                                variant="icon"
                                 title="Voir le diff indexé"
                                 aria-label={`Diff indexé ${file.path}`}
                                 onClick={() => void showDiff(file.path, true)}
                               >
                                 <Icon name="files" size={13} />
-                              </button>
-                              <button
-                                className="icon-button"
+                              </Button>
+                              <Button
+                                variant="icon"
                                 title="Désindexer"
                                 aria-label={`Désindexer ${file.path}`}
                                 onClick={() =>
@@ -1353,11 +1354,11 @@ export default function App() {
                                 }
                               >
                                 −
-                              </button>
+                              </Button>
                             </>
                           ) : null}
-                          <button
-                            className="icon-button"
+                          <Button
+                            variant="icon"
                             title="Indexer"
                             aria-label={`Indexer ${file.path}`}
                             onClick={() =>
@@ -1365,7 +1366,7 @@ export default function App() {
                             }
                           >
                             <Icon name="plus" size={13} />
-                          </button>
+                          </Button>
                         </div>
                       ))}
                       {!git.files.length ? (
@@ -1377,15 +1378,15 @@ export default function App() {
                       <div className="section-line">
                         <h3>Branches & isolation</h3>
                       </div>
-                      <button className="sidebar-action" onClick={() => setGitManager('branches')}>
+                      <Button className="sidebar-action" onClick={() => setGitManager('branches')}>
                         <Icon name="branch" size={15} />
                         Créer une branche
-                      </button>
-                      <button className="sidebar-action" onClick={() => gitDialog('worktree')}>
+                      </Button>
+                      <Button className="sidebar-action" onClick={() => gitDialog('worktree')}>
                         <Icon name="folder" size={15} />
                         Créer un worktree
-                      </button>
-                      <button
+                      </Button>
+                      <Button
                         className="sidebar-action"
                         onClick={() => {
                           void request<string>('git.worktrees')
@@ -1403,7 +1404,7 @@ export default function App() {
                       >
                         <Icon name="files" size={15} />
                         Voir les worktrees
-                      </button>
+                      </Button>
                     </>
                   ) : (
                     <div className="empty-state compact">
@@ -1469,9 +1470,9 @@ export default function App() {
                 onMutate={(action) => void mutateGit(action).catch(() => {})} />
               {diff ? <>
                 <div className="diff-page-toolbar">
-                  <button className="text-button" onClick={() => setDiff(null)}><Icon name="git" size={15} /> Vue d’ensemble</button>
+                  <Button className="text-button" onClick={() => setDiff(null)}><Icon name="git" size={15} /> Vue d’ensemble</Button>
                   <span>{diff.staged ? 'HEAD → Index' : 'Index → Fichier de travail'}</span>
-                  <button className="text-button" onClick={() => { navigate('files'); void openFile(diff.path); }}>Ouvrir le fichier <Icon name="arrow" size={14} /></button>
+                  <Button className="text-button" onClick={() => { navigate('files'); void openFile(diff.path); }}>Ouvrir le fichier <Icon name="arrow" size={14} /></Button>
                 </div>
                 {codeArea}
               </> : <GitOverview git={git} onDiff={(path, staged) => void showDiff(path, staged)} onRefresh={() => void refresh()}
@@ -1494,13 +1495,13 @@ export default function App() {
                 exactement là où vous en étiez.
               </p>
               <div className="welcome-actions">
-                <button className="button" onClick={openFolder}>
+                <Button variant="primary" onClick={openFolder}>
                   <Icon name="folder" size={16} />
                   Ouvrir un dossier
                   <Icon name="arrow" size={15} />
-                </button>
+                </Button>
                 {desktop && localStorage.getItem('galeata:last-workspace') ? (
-                  <button
+                  <Button
                     className="text-button"
                     onClick={() =>
                       void chooseWorkspace(
@@ -1509,7 +1510,7 @@ export default function App() {
                     }
                   >
                     Reprendre le dernier projet
-                  </button>
+                  </Button>
                 ) : null}
               </div>
               <div className="welcome-features">
@@ -1558,7 +1559,7 @@ export default function App() {
                       { id: 'checks', label: 'Vérifications', icon: 'check' },
                     ] as const
                   ).map((item) => (
-                    <button
+                    <Button
                       key={item.id}
                       role="tab"
                       aria-selected={bottom === item.id}
@@ -1570,27 +1571,27 @@ export default function App() {
                       {item.id === 'activity' && activities.length ? (
                         <CountBadge count={activities.length} label="activités" />
                       ) : null}
-                    </button>
+                    </Button>
                   ))}
                 </div>
                 <div>
-                  <button
-                    className="icon-button"
+                  <Button
+                    variant="icon"
                     title="Nouveau terminal"
                     aria-label="Nouveau terminal"
                     disabled={!workspace || !desktop}
                     onClick={() => launchAgent('shell')}
                   >
                     <Icon name="plus" size={14} />
-                  </button>
-                  <button
-                    className="icon-button"
+                  </Button>
+                  <Button
+                    variant="icon"
                     title="Masquer le terminal"
                     aria-label="Masquer le terminal"
                     onClick={() => setBottomVisible(false)}
                   >
                     <Icon name="close" size={14} />
-                  </button>
+                  </Button>
                 </div>
               </div>
               <div className="terminal-area" hidden={bottom !== 'terminal'}>
@@ -1602,17 +1603,17 @@ export default function App() {
                           className={terminalKey === tab.launch.key ? 'active' : ''}
                           key={tab.launch.key}
                         >
-                          <button onClick={() => setTerminalKey(tab.launch.key)}>
+                          <Button onClick={() => setTerminalKey(tab.launch.key)}>
                             <span className={`status-dot ${tab.exited ? 'idle' : ''}`} />
                             {tab.launch.kind}
                             {tab.exited ? ' · terminé' : ''}
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             aria-label={`Fermer le terminal ${tab.launch.kind}`}
                             onClick={() => closeTerminal(tab.launch.key)}
                           >
                             <Icon name="close" size={11} />
-                          </button>
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -1647,9 +1648,9 @@ export default function App() {
                       <span className="terminal-cursor" />
                     </div>
                     {workspace && desktop ? (
-                      <button className="text-button" onClick={() => launchAgent('shell')}>
+                      <Button className="text-button" onClick={() => launchAgent('shell')}>
                         Ouvrir un terminal <Icon name="plus" size={13} />
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
                 )}
@@ -1718,20 +1719,20 @@ export default function App() {
       <footer className="statusbar">
         <div>
           {git.isRepo ? (
-            <button aria-label={`Gérer les branches : ${git.branch}`} title="Changer de branche, fusionner et gérer les stash" onClick={() => setGitManager('branches')}>
+            <Button aria-label={`Gérer les branches : ${git.branch}`} title="Changer de branche, fusionner et gérer les stash" onClick={() => setGitManager('branches')}>
               <Icon name="branch" size={12} />
               {git.branch}
-            </button>
+            </Button>
           ) : (
             <span>
               <Icon name="folder" size={12} />
               {workspace ? 'Dossier local' : 'Aucun projet'}
             </span>
           )}
-          <button onClick={() => navigate('agents')}>
+          <Button onClick={() => navigate('agents')}>
             <Icon name="agents" size={12} />
             {activeCount ? `${activeCount} ${activeCount === 1 ? 'agent déclaré actif' : 'agents déclarés actifs'}` : 'Aucune mission déclarée active'}
-          </button>
+          </Button>
           <ChecksStatusButton workspaceId={workspace?.id} open={checksOpen} onClick={runVerification} />
         </div>
         <div>
@@ -1745,13 +1746,13 @@ export default function App() {
               <span>{activeFile.language}</span>
             </>
           ) : null}
-          <button
+          <Button
             aria-label="Afficher le terminal"
             title="Afficher le terminal"
             onClick={() => setBottomVisible((value) => !value)}
           >
             <Icon name="terminal" size={13} />
-          </button>
+          </Button>
           <span className="status-dot" />
         </div>
       </footer>
@@ -1759,13 +1760,13 @@ export default function App() {
         <div className="toast" role="alert">
           <Icon name="warning" size={18} />
           <span>{toast}</span>
-          <button
-            className="icon-button"
+          <Button
+            variant="icon"
             aria-label="Fermer le message"
             onClick={() => setToast('')}
           >
             <Icon name="close" size={15} />
-          </button>
+          </Button>
         </div>
       ) : null}
       {dialog ? <Dialog key={dialog.title} spec={dialog} onClose={() => setDialog(null)} /> : null}
@@ -1788,7 +1789,7 @@ export default function App() {
           >
             <div className="palette-input">
               <Icon name="search" />
-              <input
+              <TextInput
                 autoFocus
                 aria-label="Fichier ou action"
                 placeholder="Rechercher un fichier ou choisir une action…"
@@ -1800,7 +1801,7 @@ export default function App() {
             <div className="palette-results">
               {paletteQuery ? (
                 paletteHits.map((hit) => (
-                  <button
+                  <Button
                     key={hit.path}
                     onClick={() => {
                       navigate('files');
@@ -1811,11 +1812,11 @@ export default function App() {
                   >
                     <Icon name="files" size={15} />
                     {hit.path}
-                  </button>
+                  </Button>
                 ))
               ) : (
                 <>
-                  <button
+                  <Button
                     onClick={() => {
                       setPalette(false);
                       openFolder();
@@ -1823,8 +1824,8 @@ export default function App() {
                   >
                     <Icon name="folder" size={16} />
                     {workspace ? "Ouvrir un projet dans une nouvelle fenêtre" : "Ouvrir un dossier"}
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     disabled={!workspace}
                     onClick={() => {
                       setPalette(false);
@@ -1833,8 +1834,8 @@ export default function App() {
                   >
                     <Icon name="plus" size={16} />
                     Créer un fichier
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     disabled={!workspace || !desktop}
                     onClick={() => {
                       setPalette(false);
@@ -1843,8 +1844,8 @@ export default function App() {
                   >
                     <Icon name="terminal" size={16} />
                     Ouvrir un terminal
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     onClick={() => {
                       setPalette(false);
                       setPanel('agents');
@@ -1852,7 +1853,7 @@ export default function App() {
                   >
                     <Icon name="agents" size={16} />
                     Voir les agents et les sessions
-                  </button>
+                  </Button>
 
                 </>
               )}

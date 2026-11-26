@@ -16,6 +16,7 @@
 
 mod claude;
 mod codex;
+mod content;
 mod env;
 mod event;
 mod history;

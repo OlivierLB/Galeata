@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { Component, type ReactNode } from 'react';
 
 export default class ErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -15,13 +16,13 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
             Le plan enregistré reste conservé. Recharger abandonnera les modifications de fichiers
             non sauvegardées.
           </p>
-          <button
-            className="button"
+          <Button
+            variant="primary"
             style={{ marginTop: 20 }}
             onClick={() => window.location.reload()}
           >
             Recharger l’application
-          </button>
+          </Button>
         </main>
       );
     return this.props.children;

@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { relativeTime } from '../domain.ts';
 import type { Activity, Plan } from '../types.ts';
 import { Icon } from './Icon.tsx';
@@ -86,22 +87,22 @@ export default function ActivityFeed({
                 <div className="activity-files">
                   {files.slice(0, 8).map((path) => (
                     <span key={path}>
-                      <button
+                      <Button
                         className="text-button"
                         title={`Ouvrir ${path}`}
                         onClick={() => onOpen(path)}
                       >
                         <Icon name="files" size={11} />
                         {path}
-                      </button>
-                      <button
-                        className="icon-button"
+                      </Button>
+                      <Button
+                        variant="icon"
                         title={`Diff de ${path}`}
                         aria-label={`Diff de ${path}`}
                         onClick={() => onDiff(path)}
                       >
                         <Icon name="git" size={11} />
-                      </button>
+                      </Button>
                     </span>
                   ))}
                   {files.length > 8 ? (
@@ -112,9 +113,9 @@ export default function ActivityFeed({
               {event.kind === 'proposal' ? (
                 <div className="proposal-actions">
                   <span>{String(event.data.objective ?? '')}</span>
-                  <button className="text-button" onClick={() => onProposal(event)}>
+                  <Button className="text-button" onClick={() => onProposal(event)}>
                     Examiner et accepter
-                  </button>
+                  </Button>
                 </div>
               ) : null}
               {event.data.output ? (

@@ -13,10 +13,7 @@ pub fn list(w: &Workspace, provider: &str) -> Result<Value> {
         ]),
         "codex" => roots.extend([
             w.root.join(".codex/skills"),
-            std::env::var_os("CODEX_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| home.join(".codex"))
-                .join("skills"),
+            sessions::codex_directory().join("skills"),
         ]),
         _ => return Err("Agent inconnu".into()),
     }

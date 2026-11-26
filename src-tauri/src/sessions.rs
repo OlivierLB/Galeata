@@ -17,14 +17,21 @@ fn home() -> PathBuf {
         .unwrap_or_default()
 }
 
-fn claude_directory_from(config: Option<std::ffi::OsString>, home: &Path) -> PathBuf {
+fn config_directory_from(
+    config: Option<std::ffi::OsString>,
+    home: &Path,
+    default: &str,
+) -> PathBuf {
     config
         .map(PathBuf::from)
-        .unwrap_or_else(|| home.join(".claude"))
+        .unwrap_or_else(|| home.join(default))
 }
 
 pub fn claude_directory() -> PathBuf {
-    claude_directory_from(std::env::var_os("CLAUDE_CONFIG_DIR"), &home())
+    config_directory_from(std::env::var_os("CLAUDE_CONFIG_DIR"), &home(), ".claude")
+}
+pub fn codex_directory() -> PathBuf {
+    config_directory_from(std::env::var_os("CODEX_HOME"), &home(), ".codex")
 }
 pub fn providers() -> Value {
     let providers=["codex","claude"].iter().map(|provider|{
@@ -56,9 +63,7 @@ fn collect(path: &Path, depth: usize, out: &mut Vec<PathBuf>) {
 }
 pub fn discover(w: &Workspace) -> Result<Value> {
     let mut files = vec![];
-    let codex = std::env::var_os("CODEX_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home().join(".codex"));
+    let codex = codex_directory();
     collect(&codex.join("sessions"), 5, &mut files);
     let claude = claude_directory();
     collect(&claude.join("projects"), 4, &mut files);
@@ -241,10 +246,17 @@ mod title_tests {
     #[test]
     fn claude_config_directory_overrides_the_home_default() {
         let home = Path::new("/home/tester");
-        assert_eq!(claude_directory_from(None, home), home.join(".claude"));
+        assert_eq!(
+            config_directory_from(None, home, ".claude"),
+            home.join(".claude")
+        );
+        assert_eq!(
+            config_directory_from(None, home, ".codex"),
+            home.join(".codex")
+        );
         let custom = PathBuf::from("/tmp/custom claude config");
         assert_eq!(
-            claude_directory_from(Some(custom.clone().into_os_string()), home),
+            config_directory_from(Some(custom.clone().into_os_string()), home, ".claude"),
             custom
         );
     }

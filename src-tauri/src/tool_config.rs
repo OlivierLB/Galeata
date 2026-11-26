@@ -197,9 +197,7 @@ fn inventory(w: &Workspace, provider: &str) -> Result<Inventory> {
     let home = PathBuf::from(std::env::var_os("HOME").ok_or("Dossier utilisateur introuvable")?);
     let user = match provider {
         "claude" => sessions::claude_directory(),
-        "codex" => std::env::var_os("CODEX_HOME")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join(".codex")),
+        "codex" => sessions::codex_directory(),
         _ => return Err("Outil inconnu".into()),
     };
     discover(w, provider, &home, &user)
@@ -256,34 +254,13 @@ fn save(entry: &Entry, content: &str, stamp: &str) -> Result<Value> {
             "FILE_CONFLICT : fichier modifié ailleurs. Rechargez avant d’enregistrer.".into(),
         );
     }
-    let temp = target.with_file_name(format!(".galeata-{}.tmp", uuid::Uuid::new_v4()));
-    let result = (|| -> Result<Value> {
-        use std::io::Write;
-        let mut file = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&temp)
-            .map_err(|e| e.to_string())?;
-        file.set_permissions(
-            fs::metadata(&target)
-                .map_err(|e| e.to_string())?
-                .permissions(),
-        )
-        .map_err(|e| e.to_string())?;
-        file.write_all(content.as_bytes())
-            .map_err(|e| e.to_string())?;
-        file.sync_all().map_err(|e| e.to_string())?;
-        // Recheck after writing the temporary file, before replacing the destination.
+    crate::atomic_file::replace(&target, content.as_bytes(), || {
         if read(&target)?["stamp"].as_str() != Some(stamp) {
             return Err("FILE_CONFLICT : fichier modifié ailleurs".into());
         }
-        fs::rename(&temp, &target).map_err(|e| e.to_string())?;
-        read(&target)
-    })();
-    if result.is_err() {
-        let _ = fs::remove_file(temp);
-    }
-    result
+        Ok(())
+    })?;
+    read(&target)
 }
 pub fn write(w: &Workspace, provider: &str, id: &str, content: &str, stamp: &str) -> Result<Value> {
     save(&find(w, provider, id)?, content, stamp)

@@ -1,3 +1,4 @@
+import { Button, TextArea } from './ui/Controls.tsx';
 import ChatMessage from './ChatMessage.tsx';
 import { ChoicePicker } from './ChoicePicker.tsx';
 import { memo, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
@@ -96,7 +97,7 @@ const ItemView = memo(function ItemView({
         <span className="tool-title">{item.title || item.path || ''}</span>
         {relativePath ? (
           <span className="tool-actions">
-            <button
+            <Button
               className="text-button"
               onClick={(event) => {
                 event.preventDefault();
@@ -104,9 +105,9 @@ const ItemView = memo(function ItemView({
               }}
             >
               Ouvrir
-            </button>
+            </Button>
             {item.tool === 'fileEdit' ? (
-              <button
+              <Button
                 className="text-button"
                 onClick={(event) => {
                   event.preventDefault();
@@ -114,7 +115,7 @@ const ItemView = memo(function ItemView({
                 }}
               >
                 Diff
-              </button>
+              </Button>
             ) : null}
           </span>
         ) : null}
@@ -127,9 +128,9 @@ const ItemView = memo(function ItemView({
               {change.path.startsWith('/') ? (
                 change.path
               ) : (
-                <button className="text-button" onClick={() => actions.onShowDiff(change.path)}>
+                <Button className="text-button" onClick={() => actions.onShowDiff(change.path)}>
                   {change.path}
-                </button>
+                </Button>
               )}
             </li>
           ))}
@@ -197,7 +198,7 @@ function ApprovalCard({
       ) : null}
       {refusing ? (
         <div className="approval-refuse">
-          <textarea
+          <TextArea
             autoFocus
             rows={2}
             aria-label="Que doit faire l’agent à la place ?"
@@ -211,36 +212,36 @@ function ApprovalCard({
               }
             }}
           />
-          <button className="button danger" disabled={busy} onClick={refuse}>
+          <Button variant="danger" disabled={busy} onClick={refuse}>
             Refuser
-          </button>
-          <button className="text-button" onClick={() => setRefusing(false)}>
+          </Button>
+          <Button className="text-button" onClick={() => setRefusing(false)}>
             Annuler
-          </button>
+          </Button>
         </div>
       ) : (
         <div className="approval-actions">
-          <button className="button" disabled={busy} onClick={() => decide('allow')}>
+          <Button variant="primary" disabled={busy} onClick={() => decide('allow')}>
             <Icon name="check" size={14} /> Autoriser
-          </button>
+          </Button>
           {approval.always ? (
-            <button
+            <Button
               className="text-button"
               disabled={busy}
               onClick={() => decide('allowForSession')}
             >
               {approval.always}
-            </button>
+            </Button>
           ) : null}
-          <button className="text-button danger" disabled={busy} onClick={() => setRefusing(true)}>
+          <Button className="text-button danger" disabled={busy} onClick={() => setRefusing(true)}>
             Refuser…
-          </button>
+          </Button>
         </div>
       )}
       {offerAuto ? (
         <p className="approval-hint">
           Trop de demandes ?{' '}
-          <button
+          <Button
             className="text-button"
             onClick={() =>
               void setAgentMode(id, 'auto').catch((error) =>
@@ -249,7 +250,7 @@ function ApprovalCard({
             }
           >
             Passer cette conversation en mode Auto
-          </button>
+          </Button>
           {provider === 'claude' ? ' (votre mode habituel du terminal)' : ''}
         </p>
       ) : null}
@@ -355,10 +356,10 @@ export default function AgentChat({
             </div>
           ) : null}
           {conversation.items.length > visibleCount ? (
-            <button className="text-button" onClick={() => {
+            <Button className="text-button" onClick={() => {
               stick.current = false;
               setHistoryWindow({ id, count: visibleCount + 100 });
-            }}>Afficher 100 éléments précédents</button>
+            }}>Afficher 100 éléments précédents</Button>
           ) : null}
           {conversation.items.filter((item, index) =>
             index >= conversation.items.length - visibleCount || item.status === 'pending',
@@ -392,9 +393,9 @@ export default function AgentChat({
           {conversation.costUsd ? ` · ${conversation.costUsd.toFixed(2)} $` : ''}
         </span>
         {conversation.busy ? (
-          <button className="text-button" onClick={() => void interruptAgent(id)}>
+          <Button className="text-button" onClick={() => void interruptAgent(id)}>
             Interrompre
-          </button>
+          </Button>
         ) : null}
       </AgentComposer>
     </section>

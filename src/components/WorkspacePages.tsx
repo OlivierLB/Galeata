@@ -1,3 +1,4 @@
+import { Text, Button, TextInput } from './ui/Controls.tsx';
 import { useMemo, useState } from 'react';
 import type { GitStatus, SearchHit, Workspace } from '../types.ts';
 import { Icon } from './Icon.tsx';
@@ -18,15 +19,15 @@ export function FilesHome({ workspace, git, onFind, onCreate, onOpen }: {
         <p>Ouvrez un fichier dans l’explorateur. Vos onglets et vos modifications restent ici lorsque vous changez de page.</p>
       </header>
       <div className="page-actions">
-        <button className="button" onClick={onFind}><Icon name="search" size={16} /> Trouver un fichier <kbd>Ctrl P</kbd></button>
-        <button className="button secondary" onClick={onCreate}><Icon name="plus" size={16} /> Créer un fichier</button>
+        <Button variant="primary" onClick={onFind}><Icon name="search" size={16} /> Trouver un fichier <kbd>Ctrl P</kbd></Button>
+        <Button variant="secondary" onClick={onCreate}><Icon name="plus" size={16} /> Créer un fichier</Button>
       </div>
       <section className="page-card">
         <div className="page-section-heading"><h2>À portée de main</h2><span>{git.files.length ? 'Fichiers modifiés dans le projet' : 'Votre espace de travail'}</span></div>
         {git.files.length ? git.files.slice(0, 8).map((file) => (
-          <button className="page-file-link" key={file.path} onClick={() => onOpen(file.path)}>
+          <Button className="page-file-link" key={file.path} onClick={() => onOpen(file.path)}>
             <Icon name="files" size={16} /><span>{file.path}</span><Icon name="arrow" size={15} />
-          </button>
+          </Button>
         )) : <div className="page-hint"><Icon name="files" size={22} /><p>Aucun fichier ouvert pour le moment. L’explorateur à gauche présente le contenu du projet.</p></div>}
       </section>
       <p className="page-footnote"><Icon name="save" size={14} /> Ctrl S pour enregistrer · Ctrl P pour ouvrir un autre fichier</p>
@@ -56,18 +57,18 @@ export function FileSearch({ query, hits, searching, hasMore, onQuery, onOpen, o
   return (
     <section className="file-content-search" aria-label="Recherche dans les fichiers">
       <div className="page-search-box"><Icon name="search" size={16} />
-        <input autoFocus id="project-content-search" aria-label="Rechercher dans le contenu" placeholder="Texte dans le projet…" value={query} onChange={event => onQuery(event.target.value)} />
-        {query ? <button className="icon-button" aria-label="Effacer la recherche" onClick={() => onQuery('')}><Icon name="close" size={14} /></button> : null}
+        <TextInput autoFocus id="project-content-search" aria-label="Rechercher dans le contenu" placeholder="Texte dans le projet…" value={query} onChange={event => onQuery(event.target.value)} />
+        {query ? <Button variant="icon" aria-label="Effacer la recherche" onClick={() => onQuery('')}><Icon name="close" size={14} /></Button> : null}
       </div>
       <p role="status" className="muted small-copy">{searching ? 'Recherche en cours…' : trimmed ? `${hits.length}${hasMore ? '+' : ''} résultat(s) dans ${groups.length} fichier(s)` : 'Cherchez du texte, puis ouvrez une occurrence à sa ligne.'}</p>
-      {trimmed && !searching && !hits.length ? <p className="muted small-copy">Aucune correspondance.</p> : null}
+      {trimmed && !searching && !hits.length ? <Text tone="muted" className="small-copy">Aucune correspondance.</Text> : null}
       <div className="page-search-results" aria-busy={searching}>
         {groups.map(([path, matches]) => <section className="search-result-group page-card" key={path}>
-          <button className="search-result-path" aria-label={path} onClick={() => onOpen(matches[0])}><Icon name="files" size={16} /><strong>{path}</strong><span>{matches.length}</span><Icon name="arrow" size={14} /></button>
-          {matches.map((hit, index) => <button className="search-result-line" key={`${hit.line}:${index}`} onClick={() => onOpen(hit)} aria-label={`${path}, ligne ${hit.line}`}><span>{hit.line}</span><code>{hit.text.trim()}</code></button>)}
+          <Button className="search-result-path" aria-label={path} onClick={() => onOpen(matches[0])}><Icon name="files" size={16} /><strong>{path}</strong><span>{matches.length}</span><Icon name="arrow" size={14} /></Button>
+          {matches.map((hit, index) => <Button className="search-result-line" key={`${hit.line}:${index}`} onClick={() => onOpen(hit)} aria-label={`${path}, ligne ${hit.line}`}><span>{hit.line}</span><code>{hit.text.trim()}</code></Button>)}
         </section>)}
       </div>
-      {hasMore ? <button className="button secondary load-results" disabled={searching} onClick={onMore}>Charger la suite</button> : null}
+      {hasMore ? <Button className="button secondary load-results" disabled={searching} onClick={onMore}>Charger la suite</Button> : null}
     </section>
   );
 }
@@ -95,15 +96,15 @@ export function GitOverview({ git, onDiff, onRefresh, onTerminal }: {
       <header className="git-review-toolbar">
         <h1>Changements</h1>
         <span className="git-review-branch"><Icon name="branch" size={14} />{git.branch || 'Sans dépôt'}</span>
-        <button className="text-button" onClick={onRefresh}><Icon name="refresh" size={14} /> Actualiser</button>
+        <Button className="text-button" onClick={onRefresh}><Icon name="refresh" size={14} /> Actualiser</Button>
       </header>
       {git.isRepo ? <>
         <div className="git-review-filters" aria-label="Filtrer les changements">
           {Object.entries(groups).map(([key, group]) => key !== 'conflicts' || group.files.length ?
-            <button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
+            <Button key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>
               {group.label} <span>{group.files.length}</span>
-            </button> : null)}
-          <input aria-label="Filtrer les fichiers Git" placeholder="Filtrer les fichiers…" value={query} onChange={event => setQuery(event.target.value)} />
+            </Button> : null)}
+          <TextInput aria-label="Filtrer les fichiers Git" placeholder="Filtrer les fichiers…" value={query} onChange={event => setQuery(event.target.value)} />
         </div>
         <section className="page-card git-change-list">
 
@@ -114,14 +115,14 @@ export function GitOverview({ git, onDiff, onRefresh, onTerminal }: {
               const working = file.worktree !== ' ';
               const status = file.conflicted ? 'Conflit' : file.index === '?' ? 'Nouveau' : (file.worktree === 'D' || file.index === 'D') ? 'Supprimé' : (file.index === 'A' ? 'Ajouté' : 'Modifié');
               return <div className="git-change-row" key={file.path}>
-                <button className="git-change-path" onClick={() => onDiff(file.path, !working && indexed)}><Icon name="files" size={16} /><span>{file.path}</span><small>{status}</small></button>
-                <div className="git-compare-actions">{indexed ? <button onClick={() => onDiff(file.path, true)}>Index</button> : null}{working ? <button onClick={() => onDiff(file.path, false)}>Travail</button> : null}</div>
+                <Button className="git-change-path" onClick={() => onDiff(file.path, !working && indexed)}><Icon name="files" size={16} /><span>{file.path}</span><small>{status}</small></Button>
+                <div className="git-compare-actions">{indexed ? <Button onClick={() => onDiff(file.path, true)}>Index</Button> : null}{working ? <Button onClick={() => onDiff(file.path, false)}>Travail</Button> : null}</div>
               </div>;
             })}
             {!visible.length ? <p className="git-filter-empty">Aucun fichier ne correspond à ce filtre.</p> : null}
           </> : <div className="git-clean"><Icon name="check" size={34} /><h2>Tout est à jour.</h2><p>Aucun changement local à relire. Vos prochaines modifications apparaîtront ici.</p></div>}
         </section>
-      </> : <div className="page-card git-clean"><Icon name="git" size={36} /><h2>Commencez l’historique du projet.</h2><p>Ouvrez le terminal et lancez <code>git init</code>, puis actualisez cette page.</p><div className="page-actions"><button className="button" onClick={onTerminal}><Icon name="terminal" size={16} /> Afficher le terminal</button><button className="button secondary" onClick={onRefresh}>Actualiser</button></div></div>}
+      </> : <div className="page-card git-clean"><Icon name="git" size={36} /><h2>Commencez l’historique du projet.</h2><p>Ouvrez le terminal et lancez <code>git init</code>, puis actualisez cette page.</p><div className="page-actions"><Button variant="primary" onClick={onTerminal}><Icon name="terminal" size={16} /> Afficher le terminal</Button><Button variant="secondary" onClick={onRefresh}>Actualiser</Button></div></div>}
     </div>
   );
 }

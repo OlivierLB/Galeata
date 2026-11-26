@@ -1,4 +1,5 @@
 mod agents;
+mod atomic_file;
 mod check_runner;
 mod checks;
 mod diagnostics;

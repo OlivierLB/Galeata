@@ -1,3 +1,4 @@
+import { Button, Select, TextArea, TextInput } from './ui/Controls.tsx';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from './Icon.tsx';
 
@@ -25,6 +26,8 @@ export default function Dialog({ spec, onClose }: { spec: DialogSpec; onClose: (
       spec.fields.map((field) => [field.name, field.value ?? field.options?.[0]?.value ?? '']),
     ),
   );
+  const updateField = (name: string, value: string) =>
+    setValues(previous => ({ ...previous, [name]: value }));
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -53,25 +56,25 @@ export default function Dialog({ spec, onClose }: { spec: DialogSpec; onClose: (
       >
         <div className="dialog-heading">
           <h2>{spec.title}</h2>
-          <button
+          <Button
             type="button"
-            className="icon-button"
+            variant="icon"
             aria-label="Fermer"
             onClick={onClose}
             disabled={busy}
           >
             <Icon name="close" />
-          </button>
+          </Button>
         </div>
         {spec.description ? <p className="dialog-description">{spec.description}</p> : null}
         {spec.fields.map((field) => (
           <label key={field.name} className="form-field">
             <span>{field.label}</span>
             {field.options ? (
-              <select
+              <Select
                 value={values[field.name]}
                 onChange={(event) =>
-                  setValues((previous) => ({ ...previous, [field.name]: event.target.value }))
+                  updateField(field.name, event.target.value)
                 }
               >
                 {field.options.map((option) => (
@@ -79,26 +82,26 @@ export default function Dialog({ spec, onClose }: { spec: DialogSpec; onClose: (
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </Select>
             ) : field.type === 'textarea' ? (
-              <textarea
+              <TextArea
                 value={values[field.name]}
                 required={field.required}
                 placeholder={field.placeholder}
                 onChange={(event) =>
-                  setValues((previous) => ({ ...previous, [field.name]: event.target.value }))
+                  updateField(field.name, event.target.value)
                 }
                 rows={4}
               />
             ) : (
-              <input
+              <TextInput
                 type={field.type ?? 'text'}
                 value={values[field.name]}
                 required={field.required}
                 placeholder={field.placeholder}
                 autoComplete="off"
                 onChange={(event) =>
-                  setValues((previous) => ({ ...previous, [field.name]: event.target.value }))
+                  updateField(field.name, event.target.value)
                 }
               />
             )}
@@ -110,12 +113,12 @@ export default function Dialog({ spec, onClose }: { spec: DialogSpec; onClose: (
           </p>
         ) : null}
         <div className="dialog-actions">
-          <button type="button" className="button secondary" onClick={onClose} disabled={busy}>
+          <Button type="button" variant="secondary" onClick={onClose} disabled={busy}>
             Annuler
-          </button>
-          <button className={`button ${spec.danger ? 'danger' : ''}`} disabled={busy}>
+          </Button>
+          <Button className={`button ${spec.danger ? 'danger' : ''}`} disabled={busy}>
             {busy ? 'En cours…' : spec.submit ?? 'Enregistrer'}
-          </button>
+          </Button>
         </div>
       </form>
     </dialog>

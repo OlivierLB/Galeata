@@ -1,3 +1,4 @@
+import { Text, Button } from '../ui/Controls.tsx';
 import { formatCommand } from '../../checks/command.ts';
 import { useEffect, useState } from 'react';
 import { request, subscribe } from '../../api.ts';
@@ -31,20 +32,20 @@ export default function CheckResults({ runs, onCancel, onRerun, onError }: {
     {!runs.length ? <p className="muted">Aucun contrôle exécuté par Galeata pour ce projet.</p> : null}
     {runs.map(run => <article className="check-run" key={run.id}>
       <header><strong>{new Date(run.createdAt).toLocaleString('fr-FR')}</strong>
-        {run.active ? <button className="text-button" onClick={() => void onCancel(run.id).catch(onError)}>Annuler la sélection</button> :
-          <button className="text-button" disabled={active || !run.jobs.some(job => !['passed', 'cancelled'].includes(job.status))}
-            onClick={() => onRerun(run.jobs.filter(job => !['passed', 'cancelled'].includes(job.status)).map(job => job.check.id))}>Resélectionner les échecs</button>}
+        {run.active ? <Button className="text-button" onClick={() => void onCancel(run.id).catch(onError)}>Annuler la sélection</Button> :
+          <Button className="text-button" disabled={active || !run.jobs.some(job => !['passed', 'cancelled'].includes(job.status))}
+            onClick={() => onRerun(run.jobs.filter(job => !['passed', 'cancelled'].includes(job.status)).map(job => job.check.id))}>Resélectionner les échecs</Button>}
       </header>
-      {run.stale ? <p className="muted small-copy">Projet modifié depuis le lancement, ou résultat d’une session précédente.</p> : null}
+      {run.stale ? <Text tone="muted" className="small-copy">Projet modifié depuis le lancement, ou résultat d’une session précédente.</Text> : null}
       {run.jobs.map(job => {
         const key = `${run.id}:${job.check.id}`;
         const duration = job.startedAt && job.finishedAt ? Math.max(0, (job.finishedAt - job.startedAt) / 1000).toFixed(1) : null;
         return <div className="check-job" key={key} data-status={job.status}>
           <div><strong>{job.check.name}</strong><span>{statusLabels[job.status] ?? job.status}{duration ? ` · ${duration} s` : ''}</span></div>
-          {job.message ? <p className="muted small-copy">{job.message}</p> : null}
+          {job.message ? <Text tone="muted" className="small-copy">{job.message}</Text> : null}
           {job.exitCode !== null ? <small>Code de sortie : {job.exitCode}</small> : null}
           <details><summary>Commande exécutée</summary><code>{formatCommand(job.check.program, job.check.args)}</code><p>Dossier : {job.check.cwd || 'racine du projet'} · délai : {job.check.timeout} s</p></details>
-          {(job.hasOutput || job.status === 'running') ? <button className="text-button" onClick={() => setExpanded(expanded === key ? '' : key)}>{expanded === key ? 'Masquer la sortie' : 'Voir la sortie'}</button> : null}
+          {(job.hasOutput || job.status === 'running') ? <Button className="text-button" onClick={() => setExpanded(expanded === key ? '' : key)}>{expanded === key ? 'Masquer la sortie' : 'Voir la sortie'}</Button> : null}
           {expanded === key ? <Output runId={run.id} checkId={job.check.id} /> : null}
         </div>;
       })}

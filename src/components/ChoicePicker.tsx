@@ -1,3 +1,4 @@
+import { Button } from './ui/Controls.tsx';
 import { Icon } from './Icon.tsx';
 import { useEffect, useRef } from 'react';
 
@@ -16,10 +17,10 @@ export function ChoiceGroup({ label, value, options, onChange, className = '' }:
       : (current + direction + buttons.length) % buttons.length;
     buttons[next].focus();
   }}>
-    {options.map(option => <button key={option.id} type="button" role="radio"
+    {options.map(option => <Button key={option.id} type="button" role="radio"
       aria-checked={value === option.id} disabled={option.disabled} title={option.hint}
       className={`${value === option.id ? 'active' : ''} ${option.danger ? 'danger' : ''}`}
-      onClick={() => onChange(option.id)}>{option.label}</button>)}
+      onClick={() => onChange(option.id)}>{option.label}</Button>)}
   </div>;
 }
 

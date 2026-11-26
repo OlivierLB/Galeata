@@ -1,3 +1,4 @@
+import { Text, Button, TextInput } from './ui/Controls.tsx';
 import type { Activity, Plan } from '../types.ts';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { desktop } from '../api.ts';
@@ -139,7 +140,7 @@ export default function AgentWorkspace({
             }}
             className={`agent-tab ${conversation.id === active ? 'active' : ''}`}
           >
-            <button
+            <Button
               role="tab"
               aria-selected={conversation.id === active}
               onDoubleClick={() => { setRenaming(conversation.id); setDraftName(label(conversation.id)); }}
@@ -150,34 +151,34 @@ export default function AgentWorkspace({
             >
               <span className={`status-dot state-${conversation.state}`} />
               <span className="conversation-name">{label(conversation.id)}</span>
-            </button>
-            {renaming === conversation.id ? <input autoFocus aria-label="Nom de la conversation"
+            </Button>
+            {renaming === conversation.id ? <TextInput autoFocus aria-label="Nom de la conversation"
               value={draftName} maxLength={80} onChange={event => setDraftName(event.target.value)}
               onBlur={() => rename(conversation.id)} onKeyDown={event => {
                 if (event.key === 'Enter') rename(conversation.id);
                 if (event.key === 'Escape') setRenaming('');
-              }} /> : <button className="tab-close" aria-label={`Renommer ${label(conversation.id)}`}
-              onClick={() => { setRenaming(conversation.id); setDraftName(label(conversation.id)); }}>✎</button>}
-            <button
+              }} /> : <Button className="tab-close" aria-label={`Renommer ${label(conversation.id)}`}
+              onClick={() => { setRenaming(conversation.id); setDraftName(label(conversation.id)); }}>✎</Button>}
+            <Button
               className="tab-close"
               aria-label={`Fermer la conversation ${label(conversation.id)}`}
               onClick={() => void closeAgent(conversation.id).catch(onError)}
             >
               <Icon name="close" size={12} />
-            </button>
+            </Button>
           </div>
         ))}
-        <button
+        <Button
           className="icon-button agent-new"
           title="Nouvelle conversation"
           aria-label="Nouvelle conversation"
           onClick={() => setActive('')}
         >
           <Icon name="plus" size={16} />
-        </button>
+        </Button>
         {conversations.length ? (
           <div className="agent-tab-actions">
-            <button
+            <Button
               className={`agent-view-toggle ${!showTools ? 'active' : ''}`}
               title={
                 showTools
@@ -188,7 +189,7 @@ export default function AgentWorkspace({
               onClick={() => setShowTools((value) => !value)}
             >
               Texte uniquement
-            </button>
+            </Button>
 
           </div>
         ) : null}
@@ -204,23 +205,23 @@ export default function AgentWorkspace({
           <span className="eyebrow">VOS AGENTS AU CENTRE</span>
           {agent || !desktop ? (
             <>
-              <button
+              <Button
                 className="button agent-start"
                 disabled={starting}
                 onClick={() => void start(agent)}
               >
                 <Icon name="plus" size={16} />
                 {newLabel}
-              </button>
+              </Button>
               {desktop ? (
-                <button className="text-button" onClick={onOpenPreferences}>
+                <Button className="text-button" onClick={onOpenPreferences}>
                   Agent par défaut : {providerNames[defaultAgent]}
                   {agent !== defaultAgent ? ' (non disponible)' : ''} · modifier
-                </button>
+                </Button>
               ) : (
-                <p className="muted small-copy">
+                <Text tone="muted" className="small-copy">
                   L’aperçu navigateur rejoue une vraie conversation enregistrée.
-                </p>
+                </Text>
               )}
             </>
           ) : (
@@ -233,18 +234,18 @@ export default function AgentWorkspace({
                 <div className="install-line" key={provider}>
                   <strong>{providerNames[provider]}</strong>
                   <code>{install[provider].command}</code>
-                  <button
+                  <Button
                     className="text-button"
                     onClick={() => void navigator.clipboard?.writeText(install[provider].command)}
                   >
                     Copier
-                  </button>
+                  </Button>
                   <span className="muted">{install[provider].docs}</span>
                 </div>
               ))}
-              <button className="button" onClick={onRefreshProviders}>
+              <Button variant="primary" onClick={onRefreshProviders}>
                 <Icon name="refresh" size={14} /> Détecter à nouveau
-              </button>
+              </Button>
             </div>
           )}
           {problems.length ? (
@@ -265,7 +266,7 @@ export default function AgentWorkspace({
                 const ready = available.includes(provider);
                 return (
                   <div className="resume-row" key={`${session.provider}:${session.id}`}>
-                    <button
+                    <Button
                       className="resume-main"
                       disabled={!ready || starting}
                       title={
@@ -290,16 +291,16 @@ export default function AgentWorkspace({
                         {' · '}
                         {relativeTime(session.modifiedAt)}
                       </span>
-                    </button>
-                    <button
-                      className="icon-button"
+                    </Button>
+                    <Button
+                      variant="icon"
                       title="Reprendre dans le terminal"
                       aria-label={`Reprendre ${session.title} dans le terminal`}
                       disabled={!ready}
                       onClick={() => onOpenTerminal(provider, session.id)}
                     >
                       <Icon name="terminal" size={13} />
-                    </button>
+                    </Button>
                   </div>
                 );
               })}
