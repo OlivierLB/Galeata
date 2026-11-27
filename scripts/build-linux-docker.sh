@@ -36,6 +36,7 @@ in_container() {
         -e CARGO_HOME=/cache/cargo \
         -e APPIMAGE_EXTRACT_AND_RUN=1 \
         -e CI=true \
+        -e GALEATA_CRASH_ENDPOINT="${GALEATA_CRASH_ENDPOINT:-}" \
         -v "$cache:/cache" \
         -v "$root:/src" \
         -w /src \

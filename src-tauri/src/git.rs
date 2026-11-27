@@ -136,6 +136,25 @@ fn new_branch(w: &Workspace, name: &str) -> Result<()> {
     git(w, &["check-ref-format", &format!("refs/heads/{name}")])?;
     Ok(())
 }
+pub fn editor_diff(w: &Workspace, path: &str) -> Result<Value> {
+    Workspace::validate_relative(path)?;
+    let original = git(w, &["show", &format!("HEAD:{path}")]).unwrap_or_default();
+    let patch = git(
+        w,
+        &[
+            "diff",
+            "--no-ext-diff",
+            "--no-textconv",
+            "--no-color",
+            "HEAD",
+            "--",
+            path,
+        ],
+    )
+    .unwrap_or_default();
+    Ok(json!({"original":original,"patch":patch}))
+}
+
 pub fn diff(w: &Workspace, path: &str, staged: bool) -> Result<Value> {
     Workspace::validate_relative(path)?;
     let mut args = vec!["diff", "--no-ext-diff", "--no-textconv", "--no-color"];

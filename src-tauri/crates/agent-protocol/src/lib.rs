@@ -80,6 +80,7 @@ pub trait Protocol: Send {
     fn handle_line(&mut self, line: &str) -> Output;
     /// Sends a user message.
     fn send_text(&mut self, text: &str) -> Output;
+    fn send_images(&mut self, text: &str, images: &[String]) -> Output;
     /// Answers a pending approval. Unknown ids are reported, not ignored.
     fn respond(&mut self, request_id: &str, decision: Decision) -> Result<Output, String>;
     /// Answers a pending plan proposal or question.

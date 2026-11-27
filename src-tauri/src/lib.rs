@@ -2,6 +2,7 @@ mod agents;
 mod atomic_file;
 mod check_runner;
 mod checks;
+mod crash;
 mod diagnostics;
 mod git;
 mod language;
@@ -389,6 +390,7 @@ impl State {
                 Ok(event)
             }
             "git.status" | "git.get_status" => git::status(&w),
+            "git.editor_diff" if !agent => git::editor_diff(&w, required(&args, "path")?),
             "git.diff" | "git.get_diff" => {
                 git::diff(&w, required(&args, "path")?, args["staged"] == true)
             }
@@ -465,6 +467,7 @@ impl State {
                 &self.agents,
                 required(&args, "id")?,
                 required(&args, "text")?,
+                args.get("images").unwrap_or(&Value::Null),
             ),
             "agent.respond" if !agent => agents::respond(
                 &self.agents,
@@ -660,6 +663,7 @@ pub fn run() {
             let directory = app.path().app_data_dir()?;
             fs::create_dir_all(&directory)?;
             diagnostics::init(directory.join("diagnostics"));
+            crash::start(&directory);
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -697,6 +701,7 @@ pub fn run() {
             language::stop_all();
             agents::stop_all(&state.agents);
             let _ = fs::remove_file(&state.socket);
+            crash::clean_exit();
         }
     });
 }

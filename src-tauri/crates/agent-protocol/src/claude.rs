@@ -281,6 +281,25 @@ impl Claude {
         }
         let name = request["tool_name"].as_str().unwrap_or("outil");
         let input = request["input"].clone();
+        // Mission bookkeeping is already authorized by the host, including in plan mode.
+        if matches!(
+            name,
+            "mcp__galeata__plan_get"
+                | "mcp__galeata__plan_set"
+                | "mcp__galeata__plan_update_step"
+                | "mcp__galeata__plan_propose_change"
+                | "mcp__galeata__activity_report"
+                | "mcp__galeata__workspace_get_context"
+        ) {
+            out.writes.push(
+                json!({"type":"control_response","response":{
+                    "subtype":"success","request_id":id,
+                    "response":{"behavior":"allow","updatedInput":input}
+                }})
+                .to_string(),
+            );
+            return;
+        }
         let pending = PendingApproval {
             input: input.clone(),
             suggestions: request.get("permission_suggestions").cloned(),
@@ -579,6 +598,26 @@ impl Protocol for Claude {
                 "parent_tool_use_id":null,"session_id":self.session.as_deref().unwrap_or("")})
             .to_string(),
         );
+        out
+    }
+
+    fn send_images(&mut self, text: &str, images: &[String]) -> Output {
+        let mut out = self.send_text(text);
+        let mut content = vec![json!({"type":"text","text":text})];
+        for image in images {
+            if let Some((header, data)) = image.split_once(",") {
+                let media = header
+                    .trim_start_matches("data:")
+                    .trim_end_matches(";base64");
+                content.push(json!({"type":"image","source":{"type":"base64","media_type":media,"data":data}}));
+            }
+        }
+        if let Some(write) = out.writes.last_mut() {
+            if let Ok(mut value) = serde_json::from_str::<Value>(write) {
+                value["message"]["content"] = json!(content);
+                *write = value.to_string();
+            }
+        }
         out
     }
 

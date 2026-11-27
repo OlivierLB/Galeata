@@ -3,7 +3,9 @@ import { readUiNumber } from '../uiTokens.ts';
 import { installAdditionalLanguages } from '../editorLanguages.ts';
 import { configureLanguageProject, installLanguageProviders, updateLanguageDiagnostics, requestCodeOperation, previewLanguageEdit, symbolList, getModelDiagnostics, formatLanguageModel, prepareLanguageProject, openImportAtPosition } from '../languageClient.ts';
 import '../doodle-monaco.css';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { changeMarkers, type ChangeMarker } from '../editorChanges.ts';
+import ModalDialog from './ModalDialog.tsx';
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
@@ -149,6 +151,8 @@ export default function EditorSurface({
   revealRequest?: number;
 }) {
   const container = useRef<HTMLDivElement>(null);
+  const [detail, setDetail] = useState<string | null>(null);
+  const markersRef = useRef<ChangeMarker[]>([]);
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null);
   const changeRef = useRef(onChange);
   const saveRef = useRef(onSave);
@@ -173,6 +177,7 @@ export default function EditorSurface({
       renderLineHighlight: 'line',
       wordWrap: preferences.wordWrap,
       bracketPairColorization: { enabled: true },
+      glyphMargin: true,
     };
     if (diff) {
       const original = monaco.editor.createModel(
@@ -267,9 +272,16 @@ export default function EditorSurface({
     window.addEventListener('galeata:editor-command', commandListener);
     if (previous?.view) editor.restoreViewState(previous.view);
     const listener = model.onDidChangeContent(() => changeRef.current(model.getValue()));
+    const click = editor.onMouseDown(event => {
+      if (event.target.type !== monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) return;
+      const line = event.target.position?.lineNumber;
+      const marker = markersRef.current.find(marker => line && line >= marker.line && line <= marker.end);
+      if (marker) setDetail(marker.detail);
+    });
     const diagnosticsTimer = setInterval(() => { if (!document.hidden) void updateLanguageDiagnostics(model); }, 2000);
     editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => saveRef.current());
     return () => {
+      click.dispose();
       listener.dispose(); focusListener.dispose(); cursorListener.dispose(); importClick.dispose(); contextualActions.forEach(action => action.dispose());
       if (focusedEditor === editor) focusedEditor = null;
       window.removeEventListener('galeata:editor-command', commandListener);
@@ -308,11 +320,39 @@ export default function EditorSurface({
     if (model) monaco.editor.setModelLanguage(model, file.language);
   }, [file.language]);
   useEffect(() => {
+    if (diff) return;
+    let disposed = false;
+    const editor = editorRef.current;
+    const decorations = editor?.createDecorationsCollection();
+    const timer = setTimeout(() => {
+      void request<{ patch: string; original: string }>('git.editor_diff', { path: file.path }).then(result => {
+        if (disposed || !editor) return;
+        const markers = changeMarkers(result.patch);
+        if (!result.original && !markers.length && file.content)
+          markers.push({ line: 1, end: file.content.split('\n').length, kind: 'added', detail: file.content });
+        const lastLine = editor.getModel()?.getLineCount() ?? 1;
+        for (const marker of markers) {
+          marker.line = Math.min(marker.line, lastLine);
+          marker.end = Math.min(marker.end, lastLine);
+        }
+        markersRef.current = markers;
+        const labels = { added: 'Code ajouté', modified: 'Code modifié', deleted: 'Code supprimé' };
+        decorations?.set(markers.map(marker => ({
+          range: new monaco.Range(marker.line, 1, marker.end, 1),
+          options: { glyphMarginClassName: `change-marker change-${marker.kind}`,
+            glyphMarginHoverMessage: { value: `${labels[marker.kind]} — cliquer pour le détail` } },
+        })));
+      }).catch(() => { /* A non-Git file has no comparison baseline. */ });
+    }, 250);
+    return () => { disposed = true; clearTimeout(timer); decorations?.clear(); };
+  }, [file.path, file.content, diff]);
+  useEffect(() => {
     if (line && editorRef.current) {
       editorRef.current.revealLineInCenter(line);
       editorRef.current.setPosition({ lineNumber: line, column: column ?? 1 });
       editorRef.current.focus();
     }
   }, [line, column, revealRequest]);
-  return <div className="editor-surface" ref={container} aria-label={`Éditeur ${file.path}`} />;
+  return <><div className="editor-surface" ref={container} aria-label={`Éditeur ${file.path}`} />
+    {detail !== null ? <ModalDialog className="editor-change-detail" title="Détail de la modification" closeLabel="Fermer le détail" onClose={() => setDetail(null)}><pre>{detail}</pre></ModalDialog> : null}</>;
 }

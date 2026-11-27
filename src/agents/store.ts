@@ -32,6 +32,12 @@ export class AgentStore {
   private early = new Map<string, AgentEvent[]>();
   // Composer state survives chat remounts without notifying every subscriber on typing.
   private drafts = new Map<string, string>();
+  private imageDrafts = new Map<string, string[]>();
+  getImageDraft(id: string) { return this.imageDrafts.get(id) ?? []; }
+  setImageDraft(id: string, images: string[]) {
+    if (images.length) this.imageDrafts.set(id, images);
+    else this.imageDrafts.delete(id);
+  }
   private queueSender?: (id: string, text: string) => Promise<void>;
   private queueDispatches = new Set<string>();
 
@@ -193,6 +199,7 @@ export class AgentStore {
   remove(id: string) {
     mascot.remove(id);
     this.drafts.delete(id);
+    this.imageDrafts.delete(id);
     this.conversations.delete(id);
     this.positions.delete(id);
     this.early.delete(id);
@@ -203,6 +210,7 @@ export class AgentStore {
   clear() {
     mascot.clear();
     this.drafts.clear();
+    this.imageDrafts.clear();
     this.early.clear();
     this.conversations.clear();
     this.positions.clear();
@@ -221,8 +229,8 @@ export class AgentStore {
     this.changed();
   }
 
-  addUser(id: string, text: string) {
-    this.apply(id, [], [{ id: `user-${++this.sequence}`, kind: 'user', text }]);
+  addUser(id: string, text: string, images: string[] = []) {
+    this.apply(id, [], [{ id: `user-${++this.sequence}`, kind: 'user', text, images }]);
   }
 
   apply(id: string, events: AgentEvent[], extra: ChatItem[] = []) {
@@ -246,7 +254,7 @@ export class AgentStore {
       const position = positions.get(itemId);
       if (position === undefined) {
         positions.set(itemId, list.length);
-        list.push(update(create()));
+        list.push(update({ ...create(), createdAt: Date.now() }));
       } else {
         list[position] = update(list[position]);
       }
@@ -255,7 +263,7 @@ export class AgentStore {
       const list = writable();
       const itemId = `local-${++this.sequence}`;
       positions.set(itemId, list.length);
-      list.push({ id: itemId, ...item });
+      list.push({ id: itemId, createdAt: Date.now(), ...item });
     };
     for (const item of extra) push(item);
     for (const event of events) {

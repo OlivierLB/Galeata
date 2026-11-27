@@ -25,7 +25,7 @@ for (const provider of ['claude', 'codex'] as const) {
     const composer = page.getByRole('textbox', { name: 'Message à l’agent' });
     await composer.fill('Réponds exactement : ok');
     await composer.press('Enter');
-    await expect(page.locator('.chat-assistant')).toHaveText('ok');
+    await expect(page.locator('.chat-assistant .chat-bubble')).toHaveText('ok');
     await expect(picker).toContainText(provider === 'claude' ? 'Opus' : 'Codex rapide');
   });
 }
@@ -161,21 +161,11 @@ test('l’IA au centre : conversation rejouée, outil, autorisation et code à l
   expect(errors).toEqual([]);
 });
 
-test('l’agent par défaut se choisit dans les préférences et reste mémorisé', async ({ page }) => {
+test('les préférences ne dupliquent pas les réglages des agents', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Préférences', exact: true }).click();
-  const choice = page.getByRole('radiogroup', { name: 'Agent par défaut' });
-  await expect(
-    choice.getByRole('radio', { includeHidden: true, name: /Claude Code/ }),
-  ).toHaveAttribute('aria-checked', 'true');
-  await choice.getByRole('radio', { includeHidden: true, name: /Codex/ }).click();
-  await page.reload();
-  await page.getByRole('button', { name: 'Préférences', exact: true }).click();
-  await expect(
-    page
-      .getByRole('radiogroup', { name: 'Agent par défaut' })
-      .getByRole('radio', { includeHidden: true, name: /Codex/ }),
-  ).toHaveAttribute('aria-checked', 'true');
+  await expect(page.getByRole('radiogroup', { name: 'Agent par défaut' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Conversations', exact: true })).toHaveCount(0);
 });
 
 test('le diff de travail se modifie directement', async ({ page }) => {
@@ -324,12 +314,7 @@ test('modes d’autorisation du plus strict à « Sans limite », et autorisatio
       .getByRole('radiogroup', { name: 'Mode d’autorisation', includeHidden: true })
       .getByRole('radio', { includeHidden: true, name: 'Demander', exact: true }),
   ).toHaveAttribute('aria-checked', 'true');
-  await page.getByRole('button', { name: 'Préférences', exact: true }).click();
-  await expect(
-    page
-      .getByRole('radiogroup', { name: 'Mode de Claude Code au démarrage' })
-      .getByRole('radio', { includeHidden: true, name: 'Demander', exact: true }),
-  ).toHaveAttribute('aria-checked', 'true');
+
 });
 
 test('conversation drafts survive tab changes and split view', async ({ page }) => {
@@ -366,7 +351,7 @@ test('mode IA : la conversation ; mode Git : la relecture du code au centre', as
   const composer = page.getByRole('textbox', { name: 'Message à l’agent' });
   await composer.fill('Réponds exactement : ok');
   await composer.press('Enter');
-  await expect(chat.locator('.chat-assistant')).toHaveText('ok');
+  await expect(chat.locator('.chat-assistant .chat-bubble')).toHaveText('ok');
   await composer.fill('brouillon en cours');
 
   // Git mode: code review takes the center, the conversation is hidden.
@@ -383,7 +368,7 @@ test('mode IA : la conversation ; mode Git : la relecture du code au centre', as
   // Back to AI mode: the same conversation (and draft), files closed until asked.
   await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
   await expect(chat).toBeVisible();
-  await expect(chat.locator('.chat-assistant')).toHaveText('ok');
+  await expect(chat.locator('.chat-assistant .chat-bubble')).toHaveText('ok');
   await expect(composer).toHaveValue('brouillon en cours');
   await expect(review).toHaveCount(0);
   await expect(page.getByRole('region', { name: 'Volet de code' })).toHaveCount(0);
