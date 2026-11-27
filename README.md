@@ -129,4 +129,10 @@ Les budgets de performance du plan sont des objectifs, pas des résultats mesur�
 
 Logo original fourni par OlivierLB, conservé dans `public/galeata-logo.svg`. Les icônes Linux dérivent de son symbole. Palette : bleu nuit `#19254B` et lavande `#BFA9F6`.
 
-Aucune licence de redistribution n’a encore été choisie.
+## Licence et contributions
+
+Galeata est distribué sous [PolyForm Shield 1.0.0](LICENSE). Son code source est disponible ; cette licence n’est pas une licence open source au sens de l’OSI.
+
+Vous pouvez utiliser Galeata, notamment dans votre activité professionnelle, le modifier et contribuer au projet. La licence interdit de fournir un produit concurrent dans les conditions et avec les exceptions de son texte officiel, y compris un produit concurrent gratuit. Elle n’interdit pas tous les forks et n’impose pas de reverser les modifications.
+
+Les forks destinés aux contributions sont les bienvenus : voir [CONTRIBUTING.md](CONTRIBUTING.md). Le texte de la licence fait foi ; ce résumé ne le modifie pas. Les dépendances et ressources tierces conservent leurs licences respectives.
