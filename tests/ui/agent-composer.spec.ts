@@ -102,10 +102,10 @@ for (const provider of ['claude', 'codex']) {
     const input = chat.getByRole('textbox', { name: 'Message à l’agent' });
     await input.fill('Premier tour');
     await input.press('Enter');
-    await expect(chat.locator('.chat-assistant').last()).toHaveText('ok');
+    await expect(chat.locator('.chat-assistant .chat-bubble').last()).toHaveText('ok');
     await input.fill('Deuxième tour');
     await input.press('Enter');
-    await expect(chat.locator('.chat-assistant').last()).toHaveText('Bonjour depuis Galeata');
+    await expect(chat.locator('.chat-assistant .chat-bubble').last()).toHaveText('Bonjour depuis Galeata');
     await input.fill('Troisième tour');
     await input.press('Enter');
     const approval = chat.getByRole('region', { name: 'Autorisation demandée' });
@@ -127,12 +127,12 @@ for (const provider of ['claude', 'codex']) {
     await approval.getByRole('button', { name: 'Autoriser', exact: true }).click();
     const question = chat.getByRole('region', { name: 'Question de l’agent' });
     await expect(question).toBeVisible();
-    await expect(chat.locator('.chat-user').last()).toHaveText('Suite A');
+    await expect(chat.locator('.chat-user .chat-bubble').last()).toHaveText('Suite A');
     await expect(queue.getByRole('listitem')).toHaveCount(1);
     await expect(chat.locator('.chat-user')).toHaveCount(4);
     await question.getByRole('radio', { includeHidden: true, name: /Bleu/ }).click();
     await expect(chat.getByRole('region', { name: 'Plan proposé' })).toBeVisible();
-    await expect(chat.locator('.chat-user').last()).toHaveText('Suite B');
+    await expect(chat.locator('.chat-user .chat-bubble').last()).toHaveText('Suite B');
     await expect(queue).toHaveCount(0);
   });
 }
@@ -165,7 +165,7 @@ test('queue controls pause, remove and resume without changing the draft', async
   await expect(queue.getByRole('status')).toHaveText('En pause');
   await expect(page.locator('.chat-user')).toHaveCount(3);
   await queue.getByRole('button', { name: 'Reprendre la file' }).click();
-  await expect(page.locator('.chat-user').last()).toHaveText('À conserver');
+  await expect(page.locator('.chat-user .chat-bubble').last()).toHaveText('À conserver');
   await expect(input).toHaveValue('Brouillon conservé');
 });
 

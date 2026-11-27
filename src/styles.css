@@ -3962,13 +3962,13 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .editor-language-picker .mode-switch { left: auto; right: 0; max-height: min(360px, 60vh); overflow: auto; }
 .editor-file-actions .mode-switch { bottom: auto; top: calc(100% + 8px); left: auto; right: 0; }
 @media (max-width: 600px) { .editor-preference-grid { grid-template-columns: 1fr; } .editor-file-status { flex-wrap: wrap; gap: 0; } }
-.chat-time { color: var(--muted); font-size: smaller; white-space: nowrap; align-self: flex-end; }
-.chat-message { gap: .5em; }
-.change-marker { cursor: pointer; border-left: .3em solid; }
+.chat-time { color: var(--muted); font-size: var(--font-size-caption); white-space: nowrap; align-self: flex-end; }
+.chat-message { gap: var(--space-md); }
+.change-marker { cursor: pointer; border-left: var(--stroke-3) solid; }
 .change-added { border-color: var(--accent); }
 .change-modified { border-color: #b78226; }
 .change-deleted { border-color: var(--danger, #b84545); }
-.editor-change-detail { position: absolute; inset: 15%; z-index: 5; overflow: auto; background: var(--panel); border: 1px solid var(--border); padding: 1em; }
+.editor-change-detail { max-width: 80vw; max-height: 80vh; overflow: auto; }
 .editor-change-detail pre { white-space: pre-wrap; }
-.composer-images { display: flex; gap: .5em; flex-wrap: wrap; }
+.composer-images { display: flex; gap: var(--space-md); flex-wrap: wrap; }
 .composer-images img, .chat-image { max-width: 12em; max-height: 8em; object-fit: contain; }

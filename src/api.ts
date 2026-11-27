@@ -295,6 +295,13 @@ function previewRequest(method: string, args: Record<string, unknown>): unknown 
       previewStashes = previewStashes.map((stash, index) => ({ ...stash, id: `stash@{${index}}` }));
       return structuredClone(previewGit);
     }
+    case 'git.editor_diff': {
+      const modified = previewFiles[String(args.path)] ?? '';
+      const added = '- Un plan toujours visible';
+      const line = modified.split('\n').indexOf(added) + 1;
+      return { original: modified.replace(`${added}\n`, ''),
+        patch: line ? `@@ -${Math.max(0, line - 1)},0 +${line},1 @@\n+${added}\n` : '' };
+    }
     case 'git.diff': {
       const modified = previewFiles[String(args.path)] ?? '';
       return { original: modified.replace('- Un plan toujours visible\n', ''), modified };

@@ -5,6 +5,7 @@ import { configureLanguageProject, installLanguageProviders, updateLanguageDiagn
 import '../doodle-monaco.css';
 import { useEffect, useRef, useState } from 'react';
 import { changeMarkers, type ChangeMarker } from '../editorChanges.ts';
+import ModalDialog from './ModalDialog.tsx';
 import * as monaco from 'monaco-editor';
 import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
 import TypeScriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
@@ -329,6 +330,11 @@ export default function EditorSurface({
         const markers = changeMarkers(result.patch);
         if (!result.original && !markers.length && file.content)
           markers.push({ line: 1, end: file.content.split('\n').length, kind: 'added', detail: file.content });
+        const lastLine = editor.getModel()?.getLineCount() ?? 1;
+        for (const marker of markers) {
+          marker.line = Math.min(marker.line, lastLine);
+          marker.end = Math.min(marker.end, lastLine);
+        }
         markersRef.current = markers;
         const labels = { added: 'Code ajouté', modified: 'Code modifié', deleted: 'Code supprimé' };
         decorations?.set(markers.map(marker => ({
@@ -348,5 +354,5 @@ export default function EditorSurface({
     }
   }, [line, column, revealRequest]);
   return <><div className="editor-surface" ref={container} aria-label={`Éditeur ${file.path}`} />
-    {detail !== null ? <div className="editor-change-detail" role="dialog" aria-label="Détail de la modification"><button onClick={() => setDetail(null)}>Fermer</button><pre>{detail}</pre></div> : null}</>;
+    {detail !== null ? <ModalDialog className="editor-change-detail" title="Détail de la modification" closeLabel="Fermer le détail" onClose={() => setDetail(null)}><pre>{detail}</pre></ModalDialog> : null}</>;
 }

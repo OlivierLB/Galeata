@@ -337,6 +337,17 @@ export default function AgentChat({
       element.scrollTop = element.scrollHeight;
     }
   }, [conversation, showTools]);
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    const column = element?.firstElementChild;
+    if (!element || !column) return;
+    const observer = new ResizeObserver(() => {
+      if (!pointerDown.current && Date.now() - lastScroll.current > 3000)
+        element.scrollTop = element.scrollHeight;
+    });
+    observer.observe(column);
+    return () => observer.disconnect();
+  }, [id, !!conversation]);
 
   if (!conversation) return null;
   return (
