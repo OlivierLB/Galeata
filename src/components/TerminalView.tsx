@@ -1,4 +1,5 @@
 import { Icon } from './Icon.tsx';
+import { readUiNumber, readUiToken } from '../uiTokens.ts';
 import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -36,8 +37,8 @@ export default function TerminalView({
     const pendingExits: { id: string; code: number }[] = [];
     const term = new Terminal({
       cursorBlink: true,
-      fontSize: 12,
-      fontFamily: '"DejaVu Sans Mono", monospace',
+      fontSize: readUiNumber('--terminal-font-size', container.current),
+      fontFamily: readUiToken('--font-family-terminal', container.current),
       scrollback: 5000,
 
     });

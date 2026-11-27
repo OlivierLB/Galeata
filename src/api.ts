@@ -100,6 +100,7 @@ const defaultPlan: Plan = {
   ],
 };
 const previewFiles: Record<string, string> = {
+  'src/domain.ts': '// Exemple de déclaration dans un autre fichier.\n\n// Langages reconnus par l’éditeur.\nexport const languageExtensions: Record<string, string[]> = { ts: ["ts", "tsx"] };\n',
   'README.md':
     '# Galeata\n\nVotre code. Vos agents. Une vision claire.\n\nUn IDE local pour garder le fil de vos projets :\n\n- Un plan toujours visible\n- Des agents et leurs missions au même endroit\n- Des changements faciles à examiner\n- Le contexte pour reprendre là où vous en étiez\n\n## Commencer\n\nOuvrez un dossier dans l’application de bureau.\nLancez Codex ou Claude Code depuis le panneau Agents.\n\n> Vous consultez un aperçu de l’interface.\n> Aucun outil ni fichier local n’est connecté.\n',
   'src/main.tsx':

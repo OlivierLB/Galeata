@@ -38,6 +38,10 @@ La CI (`.github/workflows/ci.yml`) exécute la même batterie sur Ubuntu 22.04/2
 
 **Après chaque modification** : `sh scripts/install-local.sh`. Le script compile dans Docker (Ubuntu 22.04, sans dépendance sur le poste) et installe avec `install.sh`, pour que l'utilisateur puisse tester tout de suite. Indiquer ensuite s'il faut relancer Galeata. Sans GTK sur le poste, la partie Rust se vérifie avec `sh scripts/build-linux-docker.sh check`.
 
+## Variables de style
+
+Les valeurs communes de typographie, espacement, arrondi, dimensions des contrôles et icônes se définissent dans `src/ui-tokens.css`. Les réutiliser dans toutes les vues ; éviter de réintroduire ces valeurs en dur. Les composants canvas (Monaco, terminal) lisent les valeurs avec `src/uiTokens.ts`, sans recopier de constantes. Les préférences utilisateur et la géométrie dynamique des panneaux restent prioritaires. Les tests `tests/ui-tokens.test.mjs` contrôlent les déclarations CSS et les références aux variables.
+
 ## Icônes
 
 Toutes les icônes d’interface, présentes et futures, utilisent exclusivement les **Doodle Icons de Khushmeen** (https://khushmeen.com/icons, CC0), conservées dans `public/icons/`. Utiliser `src/components/Icon.tsx` et les noms de `src/doodleIcons.ts` ; compléter les alias sémantiques au besoin. Ne pas introduire de tracés SVG maison, d’emoji ou de caractères Unicode comme icônes, ni une autre bibliothèque. Les illustrations, le logo de marque et le contenu des utilisateurs ne sont pas des icônes d’interface. Les icônes internes de Monaco sont remplacées par les masques de `src/doodle-monaco.css`.

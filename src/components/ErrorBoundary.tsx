@@ -18,7 +18,7 @@ export default class ErrorBoundary extends Component<{ children: ReactNode }, { 
           </p>
           <Button
             variant="primary"
-            style={{ marginTop: 20 }}
+            style={{ marginTop: 'var(--space-section)' }}
             onClick={() => window.location.reload()}
           >
             Recharger l’application

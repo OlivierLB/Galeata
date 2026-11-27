@@ -32,3 +32,20 @@ test('une taille de panneau reste dans ses bornes et ignore une valeur corrompue
   assert.equal(clampSize(Number('abc'), bounds, 245), 245);
   assert.equal(clampSize(null, bounds, 245), 245);
 });
+
+test('language detection covers project filenames, uppercase extensions and executable scripts', () => {
+  assert.equal(languageFor('Dockerfile.dev'), 'dockerfile');
+  assert.equal(languageFor('Makefile'), 'makefile');
+  assert.equal(languageFor('config/settings.toml'), 'toml');
+  assert.equal(languageFor('component.vue'), 'vue');
+  assert.equal(languageFor('program', '#!/usr/bin/env python3\nprint(1)'), 'python');
+  assert.equal(languageFor('App.CS'), 'csharp');
+  assert.equal(languageFor('query.sql'), 'sql');
+});
+
+test('all fifty language fixtures resolve to the intended editing language', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const samples = JSON.parse(await readFile(new URL('./fixtures/language-samples.json', import.meta.url), 'utf8'));
+  assert.equal(samples.length, 50);
+  for (const sample of samples) assert.equal(languageFor(sample.path, sample.code), sample.language, sample.path);
+});

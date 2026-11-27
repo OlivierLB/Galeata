@@ -9,6 +9,7 @@ export interface SavedConversation {
 export interface ConversationLayout { active: string; right: string; split: boolean; pairs?: [string, string][] }
 export interface EditorLayout {
   openFiles: string[]; activeFile: string; panel: string;
+  splitFile?: string; pinnedFiles?: string[]; languages?: Record<string, string>;
   planVisible: boolean; bottomVisible: boolean; bottom: string;
   query?: string; fileSearchVisible?: boolean; diff?: { path: string; staged: boolean };
   sidebarWidth: number; planWidth: number; bottomHeight: number;

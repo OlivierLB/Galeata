@@ -3,10 +3,10 @@ import { Icon } from './Icon.tsx';
 import { useEffect, useRef } from 'react';
 
 export interface Choice { id: string; label: string; hint?: string; danger?: boolean; disabled?: boolean }
-export function ChoiceGroup({ label, value, options, onChange, className = '' }: {
-  label: string; value?: string; options: readonly Choice[]; onChange: (value: string) => void; className?: string;
+export function ChoiceGroup({ label, value, options, onChange, className = '', actionMenu = false }: {
+  label: string; value?: string; options: readonly Choice[]; onChange: (value: string) => void; className?: string; actionMenu?: boolean;
 }) {
-  return <div className={className} role="radiogroup" aria-label={label} onKeyDown={event => {
+  return <div className={className} role={actionMenu ? 'menu' : 'radiogroup'} aria-label={label} onKeyDown={event => {
     if (!['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
     const buttons = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'));
     if (!buttons.length) return;
@@ -17,16 +17,16 @@ export function ChoiceGroup({ label, value, options, onChange, className = '' }:
       : (current + direction + buttons.length) % buttons.length;
     buttons[next].focus();
   }}>
-    {options.map(option => <Button key={option.id} type="button" role="radio"
-      aria-checked={value === option.id} disabled={option.disabled} title={option.hint}
+    {options.map(option => <Button key={option.id} type="button" role={actionMenu ? 'menuitem' : 'radio'}
+      aria-checked={actionMenu ? undefined : value === option.id} disabled={option.disabled} title={option.hint}
       className={`${value === option.id ? 'active' : ''} ${option.danger ? 'danger' : ''}`}
       onClick={() => onChange(option.id)}>{option.label}</Button>)}
   </div>;
 }
 
-export function ChoicePicker({ label, title, value, options, fallback = 'Choisir', disabled, onChange, className = '' }: {
+export function ChoicePicker({ label, title, value, options, fallback = 'Choisir', disabled, onChange, className = '', actionMenu = false }: {
   label: string; title?: string; value?: string; options: readonly Choice[]; fallback?: string;
-  disabled?: boolean; onChange: (value: string) => void; className?: string;
+  disabled?: boolean; onChange: (value: string) => void; className?: string; actionMenu?: boolean;
 }) {
   const picker = useRef<HTMLDetailsElement>(null);
   const trigger = useRef<HTMLElement>(null);
@@ -47,7 +47,7 @@ export function ChoicePicker({ label, title, value, options, fallback = 'Choisir
       onClick={event => { if (disabled) event.preventDefault(); }}>
       {options.find(option => option.id === value)?.label ?? fallback}<Icon name="arrow-single-down" size={12} />
     </summary>
-    <ChoiceGroup className="mode-switch" label={label} value={value}
+    <ChoiceGroup className="mode-switch" label={label} value={value} actionMenu={actionMenu}
       options={options.map(option => ({ ...option, disabled: disabled || option.disabled }))}
       onChange={next => {
         if (disabled) return;

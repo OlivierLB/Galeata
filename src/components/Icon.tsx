@@ -39,7 +39,9 @@ export function Icon({ name, size = 18, className, style }: {
 }) {
   const icon = aliases[name] ?? (catalogue.has(name) ? name : 'file');
   const displaySize = name === 'git' || name === 'branch' ? Math.max(size, 14) : size;
-  return <svg width={displaySize} height={displaySize} className={className} style={name === 'plus' ? { ...style, rotate: '45deg' } : style}
+  const iconStyle = { '--icon-size': `var(--icon-size-${displaySize}, calc(var(--icon-unit) * ${displaySize}))`, ...style,
+    ...(name === 'plus' ? { rotate: '45deg' } : {}) } as CSSProperties;
+  return <svg width={displaySize} height={displaySize} className={className} style={iconStyle}
     aria-hidden="true" focusable="false" data-icon={icon}>
     <use href={`/icons/doodle.svg#${icon}`} />
   </svg>;

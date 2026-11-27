@@ -1,0 +1,252 @@
+[
+  {
+    "language": "javascript",
+    "path": "sample.js",
+    "code": "const value = 42;"
+  },
+  {
+    "language": "typescript",
+    "path": "sample.ts",
+    "code": "const value: number = 42;"
+  },
+  {
+    "language": "python",
+    "path": "sample.py",
+    "code": "value = 42 # value"
+  },
+  {
+    "language": "java",
+    "path": "Sample.java",
+    "code": "class Sample { int value = 42; }"
+  },
+  {
+    "language": "c",
+    "path": "sample.c",
+    "code": "int value = 42;"
+  },
+  {
+    "language": "cpp",
+    "path": "sample.cpp",
+    "code": "int value = 42;"
+  },
+  {
+    "language": "csharp",
+    "path": "Sample.cs",
+    "code": "class Sample { int value = 42; }"
+  },
+  {
+    "language": "go",
+    "path": "sample.go",
+    "code": "package main\nvar value = 42"
+  },
+  {
+    "language": "rust",
+    "path": "sample.rs",
+    "code": "const VALUE: i32 = 42;"
+  },
+  {
+    "language": "php",
+    "path": "sample.php",
+    "code": "<?php $value = 42;"
+  },
+  {
+    "language": "ruby",
+    "path": "sample.rb",
+    "code": "value = 42 # value"
+  },
+  {
+    "language": "swift",
+    "path": "sample.swift",
+    "code": "let value = 42"
+  },
+  {
+    "language": "kotlin",
+    "path": "sample.kt",
+    "code": "val value = 42"
+  },
+  {
+    "language": "dart",
+    "path": "sample.dart",
+    "code": "final value = 42;"
+  },
+  {
+    "language": "scala",
+    "path": "sample.scala",
+    "code": "val value = 42"
+  },
+  {
+    "language": "r",
+    "path": "sample.r",
+    "code": "value <- 42"
+  },
+  {
+    "language": "julia",
+    "path": "sample.jl",
+    "code": "value = 42"
+  },
+  {
+    "language": "matlab",
+    "path": "sample.m",
+    "code": "value = 42; % value"
+  },
+  {
+    "language": "lua",
+    "path": "sample.lua",
+    "code": "local value = 42"
+  },
+  {
+    "language": "perl",
+    "path": "sample.pl",
+    "code": "my $value = 42;"
+  },
+  {
+    "language": "shell",
+    "path": "sample.sh",
+    "code": "value=42 # value"
+  },
+  {
+    "language": "powershell",
+    "path": "sample.ps1",
+    "code": "$value = 42"
+  },
+  {
+    "language": "sql",
+    "path": "sample.sql",
+    "code": "SELECT 42 AS value;"
+  },
+  {
+    "language": "objective-c",
+    "path": "sample.mm",
+    "code": "int value = 42;"
+  },
+  {
+    "language": "groovy",
+    "path": "sample.groovy",
+    "code": "def value = 42"
+  },
+  {
+    "language": "vb",
+    "path": "sample.vb",
+    "code": "Dim value As Integer = 42"
+  },
+  {
+    "language": "fsharp",
+    "path": "sample.fs",
+    "code": "let value = 42"
+  },
+  {
+    "language": "clojure",
+    "path": "sample.clj",
+    "code": "(def value 42)"
+  },
+  {
+    "language": "elixir",
+    "path": "sample.ex",
+    "code": "value = 42"
+  },
+  {
+    "language": "erlang",
+    "path": "sample.erl",
+    "code": "value() -> 42."
+  },
+  {
+    "language": "haskell",
+    "path": "sample.hs",
+    "code": "value = 42"
+  },
+  {
+    "language": "ocaml",
+    "path": "sample.ml",
+    "code": "let value = 42"
+  },
+  {
+    "language": "lisp",
+    "path": "sample.lisp",
+    "code": "(defvar value 42)"
+  },
+  {
+    "language": "scheme",
+    "path": "sample.scm",
+    "code": "(define value 42)"
+  },
+  {
+    "language": "racket",
+    "path": "sample.rkt",
+    "code": "(define value 42)"
+  },
+  {
+    "language": "clojurescript",
+    "path": "sample.cljs",
+    "code": "(def value 42)"
+  },
+  {
+    "language": "coffeescript",
+    "path": "sample.coffee",
+    "code": "value = 42"
+  },
+  {
+    "language": "crystal",
+    "path": "sample.cr",
+    "code": "value = 42"
+  },
+  {
+    "language": "nim",
+    "path": "sample.nim",
+    "code": "let value = 42"
+  },
+  {
+    "language": "zig",
+    "path": "sample.zig",
+    "code": "const value: i32 = 42;"
+  },
+  {
+    "language": "d",
+    "path": "sample.d",
+    "code": "int value = 42;"
+  },
+  {
+    "language": "fortran",
+    "path": "sample.f90",
+    "code": "integer :: value = 42"
+  },
+  {
+    "language": "cobol",
+    "path": "sample.cob",
+    "code": "01 VALUE-NUM PIC 99 VALUE 42."
+  },
+  {
+    "language": "ada",
+    "path": "sample.adb",
+    "code": "Value : Integer := 42;"
+  },
+  {
+    "language": "pascal",
+    "path": "sample.pas",
+    "code": "var value: integer = 42;"
+  },
+  {
+    "language": "asm",
+    "path": "sample.asm",
+    "code": "mov eax, 42"
+  },
+  {
+    "language": "solidity",
+    "path": "sample.sol",
+    "code": "uint value = 42;"
+  },
+  {
+    "language": "vhdl",
+    "path": "sample.vhd",
+    "code": "constant value : integer := 42;"
+  },
+  {
+    "language": "verilog",
+    "path": "sample.v",
+    "code": "parameter value = 42;"
+  },
+  {
+    "language": "tcl",
+    "path": "sample.tcl",
+    "code": "set value 42"
+  }
+]

@@ -59,7 +59,7 @@ test('la recherche de contenu reste à côté des fichiers et conserve la requê
   await expect(input).toHaveValue('Bienvenue');
   await page.getByRole('button', { name: 'Arborescence', exact: true }).click();
   await expect(search).toHaveCount(0);
-  await page.getByRole('button', { name: 'Contenu', exact: true }).click();
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(input).toHaveValue('Bienvenue');
   await page.getByRole('button', { name: 'Agents et sessions', exact: true }).click();
   await expect(search).toHaveCount(0);
@@ -69,9 +69,38 @@ test('la recherche de contenu reste à côté des fichiers et conserve la requê
   await page.reload();
   await expect(input).toHaveValue('Bienvenue');
   await search.getByRole('button', { name: 'Effacer la recherche' }).click();
-  await expect(search.locator('.search-result-group')).toHaveCount(0);
+  await expect(search.locator('.file-search-group')).toHaveCount(0);
   await input.fill('aucune-correspondance-123');
   await expect(search.getByText('Aucune correspondance.', { exact: true })).toBeVisible();
+});
+
+test('search separates optional tools, highlights and folds results with shared sizing', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByRole('navigation', { name: 'Navigation principale' })).toBeVisible();
+  await page.keyboard.press('Control+Shift+f');
+  const search = page.getByRole('region', { name: 'Recherche dans les fichiers' });
+  const input = search.getByRole('textbox', { name: 'Rechercher dans le contenu' });
+  await expect(search.getByRole('textbox', { name: 'Texte de remplacement' })).toHaveCount(0);
+  await expect(search.getByRole('textbox', { name: 'Fichiers à inclure' })).toHaveCount(0);
+  await input.fill('Bienvenue');
+  const group = search.locator('.file-search-group').first();
+  await expect(group.locator('mark').first()).toHaveText('Bienvenue');
+  await group.locator('summary').click();
+  await expect(group.getByRole('button')).toHaveCount(0);
+  await group.locator('summary').click();
+  await expect(group.getByRole('button').first()).toBeVisible();
+  await search.getByRole('button', { name: 'Filtrer les fichiers', exact: true }).click();
+  await search.getByRole('textbox', { name: 'Fichiers à inclure' }).fill('src/**');
+  await page.getByRole('button', { name: 'Arborescence', exact: true }).click();
+  await page.getByRole('button', { name: 'Rechercher', exact: true }).click();
+  await expect(search.getByRole('textbox', { name: 'Fichiers à inclure' })).toHaveValue('src/**');
+  expect(await input.evaluate(element => getComputedStyle(element).fontSize)).toBe(await page.locator('.file-tools button').first().evaluate(element => getComputedStyle(element).fontSize));
+  await search.getByRole('button', { name: 'Effacer la recherche' }).click();
+  await expect(input).toBeFocused();
+  await input.fill('Bienvenue');
+  await expect(group.locator('mark').first()).toBeVisible();
+  await input.press('Enter');
+  await expect(page.getByRole('tab', { name: 'App.tsx', exact: true })).toHaveAttribute('aria-selected', 'true');
 });
 
 test('Ctrl+P ouvre un fichier par son nom dans les fichiers', async ({ page }) => {

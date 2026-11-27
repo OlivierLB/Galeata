@@ -4,6 +4,7 @@ mod check_runner;
 mod checks;
 mod diagnostics;
 mod git;
+mod language;
 mod mcp;
 mod remote;
 mod sessions;
@@ -161,6 +162,25 @@ impl State {
                 args["path"].as_str().unwrap_or(""),
                 args["offset"].as_u64().unwrap_or(0) as usize,
             ),
+            "language.configuration.get" if !agent => self.store.preference(&w.id, "languages"),
+            "language.configuration.save" if !agent => {
+                language::validate_configuration(&args["configuration"])?;
+                self.store
+                    .set_preference(&w.id, "languages", &args["configuration"])?;
+                language::stop_all();
+                Ok(Value::Null)
+            }
+            "language.status" if !agent => {
+                language::status(&w, &args, &self.store.preference(&w.id, "languages")?)
+            }
+            "language.format" if !agent => {
+                language::format(&w, &args, &self.store.preference(&w.id, "languages")?)
+            }
+            "language.request" if !agent => {
+                let mut args = args;
+                args["configuration"] = self.store.preference(&w.id, "languages")?;
+                language::dispatch(&w, &args)
+            }
             "workspace.read" => w.read(required(&args, "path")?),
             "workspace.write" if !agent => {
                 let _lock = self.files_lock.lock().map_err(|e| e.to_string())?;
@@ -594,6 +614,7 @@ async fn open_workspace(app: tauri::AppHandle, path: String) -> Result<Value> {
         }).map_err(|e|e.to_string())?;
         let watched=match watcher.watch(&w.root,RecursiveMode::Recursive){Ok(())=>Some(watcher),Err(error)=>{let _=state.store.record(&w.id,"capability","galeata","Surveillance des fichiers indisponible : actualisez Git et l’arborescence manuellement",json!({"reason":error.to_string()}));None}};
         *state.watcher.lock().map_err(|e|e.to_string())?=watched;
+        language::stop_all();
         *state.workspace.lock().map_err(|e|e.to_string())?=Some(w.clone());
         if let Some(window) = app.get_webview_window("main") { let _ = window.set_title(&format!("{} — Galeata", w.name)); }
         Ok(json!(w))
@@ -673,6 +694,7 @@ pub fn run() {
                     let _ = terminal.killer.kill();
                 }
             }
+            language::stop_all();
             agents::stop_all(&state.agents);
             let _ = fs::remove_file(&state.socket);
         }

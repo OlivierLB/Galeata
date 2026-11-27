@@ -194,7 +194,8 @@ test('le diff de travail se modifie directement', async ({ page }) => {
   await page.keyboard.type('Ligne ajoutée depuis le diff');
   await expect(code.locator('.editor.modified')).toContainText('Ligne ajoutée depuis le diff');
   await expect(page.getByText('Cannot edit in read-only editor')).toHaveCount(0);
-  await expect(code.getByRole('button', { name: 'Enregistrer le fichier' })).toBeEnabled();
+  // Preview edits are recoverable local drafts; it cannot write to the user's disk.
+  await expect(code.getByRole('button', { name: 'Enregistrer le fichier' })).toBeDisabled();
   await expect(code.locator('.editor-tab .dirty-dot')).toHaveCount(1);
 });
 
