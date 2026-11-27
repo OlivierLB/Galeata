@@ -45,7 +45,7 @@ requests==2.34.2
 rich==15.0.0
 sacremoses==0.1.1
 sentencepiece==0.2.3
-setuptools==78.1.0
+setuptools==84.1.0
 shellingham==1.5.4
 smart-open==10.0.0
 spacy==3.8.18
