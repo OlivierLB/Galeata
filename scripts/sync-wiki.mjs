@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mirrors README.md and docs/*.md into a checked-out GitHub wiki.
+// Mirrors the bilingual repository documentation into a checked-out GitHub wiki.
 // Usage: node scripts/sync-wiki.mjs <repo-root> <wiki-dir> [repo-url]
 // Only pages listed in the wiki's .galeata-sync manifest are managed: pages
 // written by hand in the wiki are never modified or deleted.
@@ -32,28 +32,50 @@ const title = (markdown, fallback) => /^#\s+(.+)$/m.exec(markdown)?.[1].trim() ?
 
 /** Returns the wiki files (name → content) generated from the repository. */
 export function buildWikiPages({ readme, docs, repoUrl }) {
-  const pages = new Map(Object.keys(docs).sort().map((name) => [`docs/${name}`, name.replace(/\.md$/, '')]));
-  const note = (source) => `\n\n---\n> Page générée depuis [\`${source}\`](${repoUrl}/blob/main/${source}) : modifiez ce fichier dans le dépôt, pas le wiki.\n`;
+  const pageName = (name) => {
+    const localized = /^(fr|en)\/(.+)\.md$/.exec(name);
+    return localized ? `${localized[1].toUpperCase()}-${localized[2] === 'README' ? 'Home' : localized[2].replaceAll('/', '-')}` : name.replace(/\.md$/, '');
+  };
+  const pages = new Map(Object.keys(docs).sort().map((name) => [`docs/${name}`, pageName(name)]));
+  const pageNames = ['Home', '_Sidebar', ...pages.values()].map((name) => name.toLowerCase());
+  if (new Set(pageNames).size !== pageNames.length) throw new Error('Wiki page name collision');
+  const note = (source) => source.startsWith('docs/en/')
+    ? `\n\n---\n> Generated from [\`${source}\`](${repoUrl}/blob/main/${source}). Edit the French source in the repository; do not edit the wiki.\n`
+    : `\n\n---\n> Page générée depuis [\`${source}\`](${repoUrl}/blob/main/${source}) : modifiez la source française dans le dépôt, pas le wiki.\n`;
   const files = new Map([['Home.md', rewriteLinks(readme, 'README.md', pages, repoUrl).trimEnd() + note('README.md')]]);
   const entries = [];
   for (const [source, page] of pages) {
     const content = docs[source.slice('docs/'.length)];
     files.set(`${page}.md`, rewriteLinks(content, source, pages, repoUrl).trimEnd() + note(source));
-    entries.push([title(content, page), page]);
+    if (!source.startsWith('docs/fr/') && !source.startsWith('docs/en/') && [...pages.keys()].some((key) => key.startsWith('docs/fr/'))) continue;
+    entries.push([title(content, page), page, source.startsWith('docs/en/') ? 'en' : 'fr']);
   }
   entries.sort(([a], [b]) => a.localeCompare(b, 'fr'));
-  files.set('_Sidebar.md', ['**[Accueil](Home)**', '', ...entries.map(([text, page]) => `- [${text}](${page})`), ''].join('\n'));
+  const bilingual = [...pages.keys()].some((key) => key.startsWith('docs/fr/'));
+  files.set('_Sidebar.md', bilingual
+    ? ['**[Galeata](Home)**', '', '**[Français](FR-Home)**', '',
+      ...entries.filter(([, , lang]) => lang === 'fr').map(([text, page]) => `- [${text}](${page})`), '',
+      '**[English](EN-Home)**', '',
+      ...entries.filter(([, , lang]) => lang === 'en').sort(([a], [b]) => a.localeCompare(b, 'en')).map(([text, page]) => `- [${text}](${page})`), ''].join('\n')
+    : ['**[Accueil](Home)**', '', ...entries.map(([text, page]) => `- [${text}](${page})`), ''].join('\n'));
   return files;
 }
 
 /** Writes the generated pages and removes managed pages that no longer exist. */
 export function syncWiki(root, wiki, repoUrl) {
-  const docs = Object.fromEntries(readdirSync(join(root, 'docs'))
-    .filter((name) => name.endsWith('.md'))
-    .map((name) => [name, readFileSync(join(root, 'docs', name), 'utf8')]));
+  const collect = (directory, prefix = '') => readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const name = `${prefix}${entry.name}`;
+    if (entry.isDirectory() && (name === 'fr' || name === 'en')) return collect(join(directory, entry.name), `${name}/`);
+    return entry.isFile() && name.endsWith('.md') ? [[name, readFileSync(join(directory, entry.name), 'utf8')]] : [];
+  });
+  const docs = Object.fromEntries(collect(join(root, 'docs')));
   const files = buildWikiPages({ readme: readFileSync(join(root, 'README.md'), 'utf8'), docs, repoUrl });
   const manifest = join(wiki, MANIFEST);
   const previous = existsSync(manifest) ? readFileSync(manifest, 'utf8').split('\n').filter(Boolean) : [];
+  // Refuse before writing anything if a new generated name is already manual.
+  for (const name of files.keys()) {
+    if (existsSync(join(wiki, name)) && !previous.includes(name)) throw new Error(`Wiki page is not managed: ${name}`);
+  }
   const removed = previous.filter((name) => !files.has(name) && !name.includes('/') && name.endsWith('.md'));
   for (const name of removed) rmSync(join(wiki, name), { force: true });
   for (const [name, content] of files) writeFileSync(join(wiki, name), content);

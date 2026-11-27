@@ -1,10 +1,10 @@
 # Galeata — guide pour les agents
 
-IDE local **Linux uniquement** (Tauri 2 + Rust, React 19 + TypeScript + Vite) pour travailler avec Codex / Claude Code. Voir `README.md`, `docs/mcp.md` (contrat MCP) et `docs/validation.md` (ce qui est prouvé ou non).
+IDE local **Linux uniquement** (Tauri 2 + Rust, React 19 + TypeScript + Vite) pour travailler avec Codex / Claude Code. Voir `README.md`, `docs/fr/mcp.md` (contrat MCP) et `docs/fr/validation.md` (ce qui est prouvé ou non).
 
 ## Architecture
 
-- `src-tauri/src/lib.rs` : `State::dispatch(method, args, agent)` est l'**unique point d'entrée**, utilisé par l'UI (commande Tauri `request`, `agent=false`) et par MCP (`agent=true`). Toute mutation (fichiers, git, terminal, remote, préférences) est gardée par `if !agent`. Un nouvel outil MCP doit être déclaré dans `mcp.rs::tools()` (schéma strict, `additionalProperties: false`) **et** documenté dans `docs/mcp.md`.
+- `src-tauri/src/lib.rs` : `State::dispatch(method, args, agent)` est l'**unique point d'entrée**, utilisé par l'UI (commande Tauri `request`, `agent=false`) et par MCP (`agent=true`). Toute mutation (fichiers, git, terminal, remote, préférences) est gardée par `if !agent`. Un nouvel outil MCP doit être déclaré dans `mcp.rs::tools()` (schéma strict, `additionalProperties: false`) **et** documenté dans `docs/fr/mcp.md`.
 - Modules : `workspace.rs` (confinement des chemins, écriture avec `stamp` anti-écrasement, recherche rg, `run_outcome` borné en temps/taille), `git.rs`, `store.rs` (SQLite : plans révisionnés, événements, préférences ; mise à jour du plan et son événement dans la même transaction), `terminal.rs` (PTY, injection de la config MCP), `sessions.rs`, `remote.rs` (jetons dans Secret Service uniquement), `bin/galeata-mcp.rs` (passerelle stdio → socket Unix).
 - `src-tauri/crates/agent-protocol` : bibliothèque pure (sans Tauri) qui pilote Claude Code (`-p` stream-json) et Codex (`app-server`), les normalise en `AgentEvent` et gère le processus. Testable sans GTK : `cargo test -p galeata-agent-protocol`. Fixtures : `tests/fixtures/agents/`, regénérées par `scripts/capture-agent-protocol.mjs`.
 - **Performance d'abord** : c'est le critère de tous les choix techniques (filtrer et regrouper au plus près de la source, bornes de taille, pas de re-rendu global).
@@ -12,7 +12,7 @@ IDE local **Linux uniquement** (Tauri 2 + Rust, React 19 + TypeScript + Vite) po
 
 ## Règles
 
-- Code, commentaires, commits : anglais (Conventional Commits : `feat:`, `fix:`, `test:`…). Textes de l'UI, messages d'erreur utilisateur, docs : français.
+- Code, commentaires, commits : anglais (Conventional Commits : `feat:`, `fix:`, `test:`…). Textes de l'UI et messages d'erreur utilisateur : français. Documentation : modifier uniquement `docs/fr/` ; `docs/en/` est généré automatiquement avec Argos Translate. Voir `docs/fr/translation.md`. Ne pas modifier les traductions anglaises directement ; corriger la source ou le glossaire.
 - Commandes système : arguments structurés, jamais de concaténation dans un shell ; durée et taille de sortie bornées.
 - Provenance : une vérification rapportée par un agent reste `agent_reported` ; seul `verification.run` produit `galeata_observed`. Ne pas confondre `done` et « vérifié ».
 - Pas de secret en clair, pas de stockage de jeton hors du coffre système.
