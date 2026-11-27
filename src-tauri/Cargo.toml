@@ -6,6 +6,7 @@ name = "galeata"
 version = "0.1.0"
 description = "Un IDE pour développer avec des agents"
 authors = ["OlivierLB"]
+license-file = "../LICENSE"
 edition = "2021"
 default-run = "galeata"
 
