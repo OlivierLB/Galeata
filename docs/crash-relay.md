@@ -1,8 +1,10 @@
-# Signalement sans compte GitHub
+# Relais de plantages : signalement sans compte GitHub
+
+Code : [`services/crash-relay/`](../services/crash-relay/).
 
 ## Hébergement retenu : Cloudflare Workers Free
 
-Le relais privilégié est désormais dans `cloudflare/`. Il utilise un sous-domaine HTTPS gratuit `galeata-crashes.<compte>.workers.dev` : aucun serveur ni domaine acheté n’est nécessaire. Conserver le compte sur **Workers Free** ; les quotas gratuits du Worker et du Durable Object bloquent les opérations au-delà des limites. Ne pas souscrire de plan payant pour ce service.
+Le relais privilégié est désormais dans [`services/crash-relay/cloudflare/`](../services/crash-relay/cloudflare/). Il utilise un sous-domaine HTTPS gratuit `galeata-crashes.<compte>.workers.dev` : aucun serveur ni domaine acheté n’est nécessaire. Conserver le compte sur **Workers Free** ; les quotas gratuits du Worker et du Durable Object bloquent les opérations au-delà des limites. Ne pas souscrire de plan payant pour ce service.
 
 Le Worker utilise le même validateur et le même format de ticket que le relais Node. Un Durable Object avec stockage **SQLite** conserve jusqu’à 10 000 signatures sans expiration, même après redémarrage, et borne globalement les tentatives d’écriture GitHub (créations et compteurs) à **25 par jour UTC**, erreurs comprises. Une limite de stockage atteinte refuse les nouvelles signatures avec 429, sans effacer les groupes existants. Les demandes supplémentaires reçoivent 429 et restent sur le poste pour un prochain envoi. Les signatures déjà transmises reçoivent 204 sans nouveau ticket. Le stockage ne contient que les signatures, numéros d’issues, identifiants aléatoires des rapports, états et compteurs ; les rapports complets sont transmis directement à GitHub.
 
@@ -78,15 +80,15 @@ Un instantané atomique est enregistré toutes les 15 secondes, ainsi qu’à ch
 
 Les envois échoués restent en attente pour le prochain lancement (16 rapports maximum, 32 Kio par rapport). La validation du relais reconstruit un objet autorisé et refuse les champs techniques arbitraires. Les anciens rapports minimaux restent acceptés par le relais.
 
-Déployer `server.mjs` avec Node 24 derrière un proxy HTTPS limitant le débit et la taille des requêtes. Fournir `GITHUB_TOKEN_FILE` via le coffre du serveur et `GITHUB_REPOSITORY=OlivierLB/Galeata`. Le jeton doit avoir le droit Issues en écriture sur ce seul dépôt. Il n’est jamais inclus dans l’application distribuée. Le relais regroupe pendant une heure les rapports ayant la même version, le même build et la même signature de panique (source, ligne, pile). Deux causes différentes d’une même version produisent donc deux tickets. La déduplication est en mémoire et repart à zéro si le relais redémarre.
+Déployer [`services/crash-relay/server.mjs`](../services/crash-relay/server.mjs) avec Node 24 derrière un proxy HTTPS limitant le débit et la taille des requêtes. Fournir `GITHUB_TOKEN_FILE` via le coffre du serveur et `GITHUB_REPOSITORY=OlivierLB/Galeata`. Le jeton doit avoir le droit Issues en écriture sur ce seul dépôt. Il n’est jamais inclus dans l’application distribuée. Le relais regroupe pendant une heure les rapports ayant la même version, le même build et la même signature de panique (source, ligne, pile). Deux causes différentes d’une même version produisent donc deux tickets. La déduplication est en mémoire et repart à zéro si le relais redémarre.
 
 Le relais écoute par défaut uniquement sur `127.0.0.1:8787`. `GET /health` retourne 204 si sa configuration est présente (cela ne vérifie pas les droits du jeton sur GitHub). Il ne demande aucun compte aux utilisateurs. Aucun rapport réel n’est envoyé par les tests : l’API GitHub y est simulée.
 
 ## Déploiement préparé
 
-Les fichiers `galeata-crash-relay.service` et `nginx.conf.example` fournissent une base pour un serveur Linux avec Node 24, nginx et systemd prenant en charge `LoadCredentialEncrypted` et `%d` (systemd 252 ou plus récent).
+Les fichiers [`galeata-crash-relay.service`](../services/crash-relay/galeata-crash-relay.service) et [`nginx.conf.example`](../services/crash-relay/nginx.conf.example) de `services/crash-relay/` fournissent une base pour un serveur Linux avec Node 24, nginx et systemd prenant en charge `LoadCredentialEncrypted` et `%d` (systemd 252 ou plus récent).
 
-1. Copier `server.mjs` et `core.mjs` sous `/opt/galeata-crash-relay/`, accessibles en lecture par le service.
+1. Copier `services/crash-relay/server.mjs` et `services/crash-relay/core.mjs` sous `/opt/galeata-crash-relay/`, accessibles en lecture par le service.
 2. Créer le secret chiffré dans `/etc/credstore.encrypted/galeata-github-token` avec `systemd-creds encrypt --name=github-token - /etc/credstore.encrypted/galeata-github-token`, en fournissant le jeton sur l’entrée standard depuis le coffre du serveur. Ne pas le mettre dans l’historique du shell ni dans le dépôt.
 3. Installer l’unité systemd, puis lancer `systemctl daemon-reload` et `systemctl enable --now galeata-crash-relay`.
 4. Adapter le domaine et les certificats HTTPS du modèle nginx, puis vérifier `nginx -t` avant rechargement. Le modèle borne le débit et la taille des rapports ; les accès HTTP ne sont pas journalisés.
