@@ -46,7 +46,7 @@ export default function AgentWorkspace({
   providers: ProviderInfo[];
   sessions: Session[];
   defaultAgent: Provider;
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, line?: number) => void;
   onShowDiff: (path: string) => void;
   onOpenTerminal: (provider: Provider, sessionId?: string) => void;
   onOpenPreferences: () => void;
