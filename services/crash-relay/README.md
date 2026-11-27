@@ -8,6 +8,16 @@ Le Worker utilise le même validateur et le même format de ticket que le relais
 
 Une limitation Cloudflare de cinq requêtes par minute et par IP protège l’entrée (compteur approximatif par point de présence). L’IP n’est pas ajoutée au rapport ni stockée par le code du relais. Les corps sont limités à 32 Kio. L’observabilité applicative du Worker est désactivée. Un quota atteint ne produit jamais une fausse confirmation d’envoi.
 
+### Ce qui remonte (rapports schéma 3)
+
+- **Panique Rust** : catégorie, fichier et ligne Galeata, pile limitée aux symboles Galeata.
+- **Signal fatal** (`SIGSEGV`, `SIGABRT`, `SIGBUS`, `SIGILL`, `SIGFPE`, `SIGQUIT`) : enregistré par un gestionnaire de signal sûr, puis le comportement d’origine reprend.
+- **Plantage de l’affichage WebKit** : le processus web meurt alors que la fenêtre survit (page blanche). Le rapport part aussitôt, sans attendre le relancement.
+- **Erreur native GTK/GLib** : au relancement, le journal système du processus mort est relu (`journalctl --user _PID=…`, borné à 200 lignes et 3 s). Seuls des identifiants sont gardés : domaine (`Gtk`), niveau, fichier C et ligne, fonction, noms de bibliothèques (`libpixbufloader-svg.so`) et indices (`missing_library`, `gtk_assertion`, `x_io_error`…). Aucun message brut ni chemin.
+- Un arrêt demandé (`SIGTERM`, `SIGHUP`, `SIGINT` : déconnexion, `kill`, Ctrl+C) n’est **pas** un crash : il est noté localement (`local-*.json`) et jamais transmis.
+
+Les rapports schéma 2 restent acceptés, avec les mêmes signatures de regroupement.
+
 ### Vérifications locales sans compte Cloudflare
 
 ```sh
@@ -24,7 +34,7 @@ Le test compile avec Wrangler épinglé puis utilise le véritable runtime `work
 3. Lancer `npm run deploy --prefix services/crash-relay/cloudflare`. La configuration crée uniquement le Worker, son limiteur et le Durable Object SQLite disponible dans l’offre gratuite.
 4. Dans le tableau de bord Cloudflare, ajouter la variable **secrète** `GITHUB_TOKEN` (chiffrée), avec le droit Issues en écriture sur `OlivierLB/Galeata` uniquement. `GITHUB_REPOSITORY` est déjà configuré sans secret. Jusqu’à l’ajout du jeton, le relais répond 503.
 5. Vérifier `/health` (configuration présente), puis `/ready` : lecture GitHub authentifiée sans création de ticket, résultat mis en cache 15 minutes dans le Durable Object. Un jeton révoqué ou expirant dans moins de 14 jours produit 503. Le droit Issues en écriture n’est pas prouvé par cette lecture ; le valider une fois par un ticket de test explicite. Si GitHub ne fournit pas l’en-tête d’expiration, renseigner `GITHUB_TOKEN_EXPIRES_AT` (date ISO) dans les variables Cloudflare. Sans date disponible, seule la validité actuelle est contrôlée.
-6. L’adresse du relais déployé est intégrée par défaut dans `src-tauri/src/crash.rs` (`DEFAULT_ENDPOINT`) : toute compilation, locale comprise, envoie ses rapports sans configuration. `GALEATA_CRASH_ENDPOINT` à la compilation la remplace par un autre relais HTTPS. Les tests n’utilisent jamais de relais. Le client utilise un User-Agent Galeata explicite pour les clients automatisés sur `workers.dev`.
+6. Enregistrer l’adresse `https://galeata-crashes.<compte>.workers.dev/crashes` dans le secret GitHub `GALEATA_CRASH_ENDPOINT` (releases) et dans la **variable** Actions du même nom : `scripts/install-local.sh` la lit avec `gh` pour les compilations locales, sans l’écrire dans les sources. Elle reste surchargeable par la variable d’environnement de compilation. Le client utilise un User-Agent Galeata explicite pour les clients automatisés sur `workers.dev`.
 
 Le déploiement n’est pas activé par la simple compilation locale. Il nécessite ton compte et le secret GitHub côté Cloudflare. Une réponse GitHub perdue après création d’un ticket peut exceptionnellement produire un doublon à la reprise ; le protocole de création d’issue n’est pas strictement idempotent.
 
@@ -40,7 +50,7 @@ Dans GitHub → Settings → Secrets and variables → Actions, configurer :
 - `CLOUDFLARE_ACCOUNT_ID` : identifiant du seul compte de déploiement.
 - `CLOUDFLARE_API_TOKEN` : jeton dédié au compte, droits Workers Scripts Edit et Account Settings Read. Le limiter à ce compte et lui donner une expiration. Ne pas réutiliser une clé globale ni transmettre le jeton dans une conversation.
 
-Les jetons ne sont pas enregistrés dans les fichiers suivis ; l’adresse publique du relais l’est (`DEFAULT_ENDPOINT`). Elle devient nécessairement visible dans le binaire distribué. `GITHUB_TOKEN` demeure exclusivement dans les secrets du Worker ; le workflow de déploiement ne le remplace pas.
+Ces valeurs ne sont pas enregistrées dans les fichiers suivis. L’adresse du relais devient nécessairement visible dans le binaire distribué. `GITHUB_TOKEN` demeure exclusivement dans les secrets du Worker ; le workflow de déploiement ne le remplace pas.
 
 Le workflow `Crash relay` teste les PR sans secrets, puis déploie les modifications du relais sur `main` seulement après ses tests. Un lancement manuel depuis `main` permet un redéploiement. Le contrôle quotidien appelle `/ready` et échoue en cas d’indisponibilité, de jeton invalide ou d’expiration proche. Activer les notifications personnelles GitHub Actions pour recevoir les échecs : GitHub → Settings → Notifications → Actions. Les exécutions planifiées dépendent de GitHub ; elles peuvent être retardées et désactivées après une longue inactivité du dépôt public.
 

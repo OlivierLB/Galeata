@@ -669,6 +669,23 @@ pub fn run() {
             fs::create_dir_all(&directory)?;
             diagnostics::init(directory.join("diagnostics"));
             crash::start(&directory);
+            // A crashed WebKit web process leaves a blank window behind: report it.
+            for window in app.webview_windows().values() {
+                let _ = window.with_webview(|webview| {
+                    use webkit2gtk::{WebProcessTerminationReason, WebViewExt};
+                    webview
+                        .inner()
+                        .connect_web_process_terminated(|_, reason| match reason {
+                            WebProcessTerminationReason::Crashed => {
+                                crash::webview_terminated(false)
+                            }
+                            WebProcessTerminationReason::ExceededMemoryLimit => {
+                                crash::webview_terminated(true)
+                            }
+                            _ => {}
+                        });
+                });
+            }
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

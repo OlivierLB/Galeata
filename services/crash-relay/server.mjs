@@ -2,7 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { MAX_BODY, normalizeReport, reportSignature, issueBody } from './core.mjs';
+import { MAX_BODY, normalizeReport, reportSignature, issueBody, issueTitle } from './core.mjs';
 export { normalizeReport, reportSignature } from './core.mjs';
 
 // Run behind an HTTPS proxy with request rate limiting. Credentials stay here.
@@ -39,7 +39,7 @@ export function createRelay({ token: credential, repository, fetcher = fetch }) 
       const response = await fetcher(`https://api.github.com/repos/${repository}/issues`, {
         method: 'POST', signal: AbortSignal.timeout(10_000),
         headers: { Authorization: `Bearer ${credential}`, Accept: 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'Galeata-crash-relay' },
-        body: JSON.stringify({ title: `${data.reason === 'rust_panic' ? 'Panique Rust' : 'Fermeture anormale'} — Galeata ${data.version} [${signature}]`, body: issueBody(data, signature) }),
+        body: JSON.stringify({ title: issueTitle(data, signature), body: issueBody(data, signature) }),
       });
       if (!response.ok) return finish(502);
       recent.set(signature, now);
