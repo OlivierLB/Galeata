@@ -421,6 +421,20 @@ impl State {
             "git.worktrees" => Ok(json!(git::git(&w, &["worktree", "list", "--porcelain"])?)),
             "sessions.list" => sessions::discover(&w),
             "providers.list" => Ok(sessions::providers()),
+            "development.install_local" if !agent && cfg!(debug_assertions) => {
+                let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .ok_or("Sources de développement introuvables")?;
+                workspace::run_outcome(
+                    root,
+                    "sh",
+                    &["scripts/install-local.sh"],
+                    &[0],
+                    Duration::from_secs(1800),
+                    4 * 1024 * 1024,
+                )?;
+                Ok(Value::Null)
+            }
             "terminal.start" if !agent => terminal::start(
                 app.clone(),
                 &self.terminals,
