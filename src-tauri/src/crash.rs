@@ -344,6 +344,21 @@ fn transmit(directory: &Path, endpoint: &str) {
         }
     }
 }
+/// Public relay of the project, used by every build (local ones included)
+/// unless `GALEATA_CRASH_ENDPOINT` names another HTTPS relay at compile time.
+#[cfg(not(test))]
+const DEFAULT_ENDPOINT: Option<&str> =
+    Some("https://galeata-crashes.lebloas-olivier.workers.dev/crashes");
+// Tests never reach the network.
+#[cfg(test)]
+const DEFAULT_ENDPOINT: Option<&str> = None;
+
+fn endpoint() -> Option<&'static str> {
+    option_env!("GALEATA_CRASH_ENDPOINT")
+        .filter(|url| url.starts_with("https://"))
+        .or(DEFAULT_ENDPOINT)
+}
+
 pub fn start(directory: &Path) {
     let directory = directory.join("crashes");
     if fs::create_dir_all(&directory).is_err() {
@@ -364,9 +379,7 @@ pub fn start(directory: &Path) {
     if RUNTIME.set(Mutex::new(runtime)).is_err() {
         return;
     }
-    if let Some(endpoint) =
-        option_env!("GALEATA_CRASH_ENDPOINT").filter(|url| url.starts_with("https://"))
-    {
+    if let Some(endpoint) = endpoint() {
         std::thread::spawn(move || transmit(&directory, endpoint));
     }
     std::thread::spawn(move || loop {
