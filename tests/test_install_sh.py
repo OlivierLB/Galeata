@@ -109,6 +109,35 @@ class OneLineInstallerTests(unittest.TestCase):
         self.assertEqual(launched.stdout.strip(), "galeata C")
         self.assertEqual(len(self.versions()), 2, self.versions())
 
+    def test_updates_preserve_running_versions_until_the_process_exits(self):
+        release_a = self.release("A")
+        self.assertEqual(self.run_installer(release_a).returncode, 0)
+        active = (self.data / "galeata/current").resolve()
+        # A real executable is needed: /proc/<pid>/exe points at the shell for scripts.
+        binary = active / "usr/bin/galeata"
+        shutil.copy2(shutil.which("sleep"), binary)
+        library = active / "usr/lib/libpixbufloader-svg.so"
+        library.parent.mkdir(parents=True)
+        library.write_bytes(b"loader fixture")
+        process = subprocess.Popen([str(binary), "60"])
+        try:
+            self.assertEqual(Path(f"/proc/{process.pid}/exe").resolve(), binary)
+            for label in ("B", "C", "D"):
+                result = self.run_installer(self.release(label))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue(library.is_file(), "A running version lost its runtime loader")
+            self.assertEqual(process.poll(), None)
+            self.assertEqual(len(self.versions()), 3, self.versions())
+            launched = subprocess.run([str(self.launcher())], text=True, capture_output=True)
+            self.assertEqual(launched.stdout.strip(), "galeata D")
+        finally:
+            process.terminate()
+            process.wait(timeout=5)
+        result = self.run_installer(self.root / "release-D")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(active.exists())
+        self.assertEqual(len(self.versions()), 2, self.versions())
+
     def test_wrong_checksum_installs_nothing(self):
         result = self.run_installer(self.release("A", corrupt=True))
         self.assertEqual(result.returncode, 1)

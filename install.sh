@@ -93,8 +93,24 @@ uninstall() {
     say "dans $data_dir/dev.olivierlb.galeata."
 }
 
-# Keeps the current version and the most recent other ones.
+# The executable and its helpers may load bundled libraries long after startup.
+# Keep their whole version directory until every process using it has exited.
+version_in_use() {
+    printf '%s\n' "$running_executables" | {
+        while IFS= read -r executable; do
+            case "$executable" in
+            "$1"/*) exit 0 ;;
+            esac
+        done
+        exit 1
+    }
+}
+
+# Keeps the current version, the most recent other ones and any active versions.
 prune_versions() {
+    # Without procfs, do not risk removing files from a running application.
+    [ -d /proc/self ] || return 0
+    running_executables=$(readlink /proc/[0-9]*/exe 2>/dev/null || true)
     current_target=$(readlink "$prefix/current" 2>/dev/null || true)
     # Newest first. Version names are hex digests; the prefix may contain spaces.
     ls -1dt "$prefix/versions"/*/ 2>/dev/null | {
@@ -104,6 +120,7 @@ prune_versions() {
             [ "$dir" = "$current_target" ] && continue
             kept=$((kept + 1))
             if [ "$kept" -ge "$KEEP_VERSIONS" ]; then
+                version_in_use "$dir" && continue
                 rm -rf "$dir"
             fi
         done
