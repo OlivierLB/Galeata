@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Signaler une faille de sécurité
+    url: https://github.com/OlivierLB/Galeata/security/advisories/new
+    about: En privé, jamais dans une issue publique.
+  - name: Documentation
+    url: https://github.com/OlivierLB/Galeata/wiki
+    about: Guides d’utilisation et de configuration.

@@ -1,0 +1,21 @@
+name: Proposer une fonctionnalité
+description: Une idée d’amélioration ou un nouveau besoin.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: Le besoin
+      description: Le problème à résoudre ou ce que vous cherchez à faire, avant la solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+      description: Ce que Galeata pourrait faire. Une maquette ou un exemple aide beaucoup.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Contournement actuel
+      description: Facultatif. Comment vous faites aujourd’hui.

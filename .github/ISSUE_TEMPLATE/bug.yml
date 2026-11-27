@@ -1,0 +1,57 @@
+name: Signaler un bug
+description: Un comportement inattendu, une erreur ou un plantage de Galeata.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci ! Ne collez ni jeton, ni secret, ni contenu privé de vos projets.
+        Une faille de sécurité se signale en privé : voir l’onglet Security.
+  - type: textarea
+    id: what
+    attributes:
+      label: Ce qui se passe
+      description: Ce que vous observez, et ce que vous attendiez à la place.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Étapes pour reproduire
+      placeholder: |
+        1. Ouvrir un dossier…
+        2. Lancer une conversation Claude Code…
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version de Galeata
+      description: Par exemple v0.1.0-local.8401bf5.
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution Linux et bureau
+      placeholder: Ubuntu 24.04, GNOME (Wayland)
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent concerné
+      options:
+        - Aucun / sans rapport
+        - Claude Code
+        - Codex
+        - Les deux
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Journaux ou message d’erreur
+      description: Facultatif. Relisez avant d’envoyer pour retirer toute donnée sensible.
+      render: text
