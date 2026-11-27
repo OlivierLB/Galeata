@@ -1,0 +1,42 @@
+name: Dependabot auto-merge
+# Enables GitHub auto-merge on low-risk Dependabot PRs. The merge itself only
+# happens once the required checks of `main` (frontend, native) pass.
+# Major bumps, and minor bumps of 0.x crates/packages (breaking under semver),
+# are left for human review.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+permissions:
+  contents: read
+jobs:
+  auto-merge:
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'OlivierLB/Galeata'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+      - name: Enable auto-merge for patch and stable minor updates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          PREVIOUS_VERSION: ${{ steps.meta.outputs.previous-version }}
+          DEPENDENCIES: ${{ steps.meta.outputs.dependency-names }}
+        run: |
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch) ;;
+            version-update:semver-minor)
+              case "$PREVIOUS_VERSION" in
+                0.*|'')
+                  echo "Skipping $DEPENDENCIES: minor bump of a 0.x version ($PREVIOUS_VERSION) may break."
+                  exit 0 ;;
+              esac ;;
+            *)
+              echo "Skipping $DEPENDENCIES: update type '$UPDATE_TYPE' needs human review."
+              exit 0 ;;
+          esac
+          echo "Enabling auto-merge for $DEPENDENCIES ($UPDATE_TYPE from $PREVIOUS_VERSION)."
+          gh pr merge --auto --squash "$PR_URL"
