@@ -1044,7 +1044,7 @@ dependencies = [
  "tauri-plugin-dialog",
  "tempfile",
  "thiserror 2.0.21",
- "toml 0.8.2",
+ "toml 1.2.2+spec-1.1.0",
  "ureq",
  "url",
  "uuid",
