@@ -1,0 +1,18 @@
+# Include inside nginx's http context; replace the domain and certificate paths.
+limit_req_zone $binary_remote_addr zone=galeata_crashes:10m rate=5r/m;
+server {
+    listen 443 ssl;
+    server_name crashes.example.com;
+    ssl_certificate /etc/letsencrypt/live/crashes.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/crashes.example.com/privkey.pem;
+    client_max_body_size 32k;
+    client_body_timeout 15s;
+    access_log off;
+    location = /crashes {
+        limit_req zone=galeata_crashes burst=5 nodelay;
+        proxy_pass http://127.0.0.1:8787;
+        proxy_read_timeout 15s;
+        proxy_send_timeout 15s;
+    }
+    location / { return 404; }
+}
