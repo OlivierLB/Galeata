@@ -1,0 +1,47 @@
+name: Wiki
+# Mirrors README.md and docs/*.md into the GitHub wiki after each change on
+# main. Hand-written wiki pages are left alone (see scripts/sync-wiki.mjs).
+on:
+  push:
+    branches: [main]
+    paths: ['README.md', 'docs/**', 'scripts/sync-wiki.mjs', '.github/workflows/wiki.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: wiki
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: github.repository == 'OlivierLB/Galeata'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write # the wiki is pushed with the workflow token
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Sync docs into the wiki
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+          SHA: ${{ github.sha }}
+        run: |
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.wiki.git"
+          if ! git clone --quiet --depth 1 "$remote" wiki 2>/dev/null; then
+            echo "::error::Wiki introuvable. Créez une première page sur ${SERVER}/${REPO}/wiki puis relancez ce workflow."
+            exit 1
+          fi
+          node scripts/sync-wiki.mjs . wiki "${SERVER}/${REPO}"
+          cd wiki
+          git add -A
+          if git diff --cached --quiet; then echo "Wiki déjà à jour."; exit 0; fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit --quiet -m "Sync from ${REPO}@${SHA::7}"
+          git push --quiet origin HEAD
+          echo "Wiki mis à jour depuis ${SHA::7}."
