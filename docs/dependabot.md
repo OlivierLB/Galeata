@@ -15,6 +15,17 @@ les mises à jour mineures d’une version `0.x` (incompatibles au sens semver).
 
 Prérequis côté dépôt : option « Allow auto-merge » activée.
 
+Pour limiter le nombre de PR, les mises à jour de correctif sont regroupées en une
+seule PR hebdomadaire par répertoire (npm racine, crash-relay, cargo). Les mises à
+jour mineures et majeures restent une PR par dépendance : une mineure `0.x` peut
+casser la compatibilité et ne doit pas être fusionnée en lot.
+
+### Mises à jour ignorées
+
+| Paquet | Mises à jour ignorées | Raison | Levée |
+| --- | --- | --- | --- |
+| `monaco-editor` | mineures (`0.x`) | 0.58 déplace l’API TypeScript (`typescriptDefaults`, `getTypeScriptWorker`…) utilisée par `EditorSurface.tsx` et `languageClient.ts` ; la PR #29 cassait le build. | Retirer la règle `ignore` de `.github/dependabot.yml` avec la migration Monaco. |
+
 ## Alertes de sécurité acceptées
 
 Chaque alerte rejetée est listée ici avec sa justification.
