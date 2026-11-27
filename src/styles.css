@@ -2422,6 +2422,10 @@ body.resizing-horizontal * {
   background: none;
   padding: 0;
 }
+.markdown code[data-file="true"] {
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
 .markdown a {
   color: var(--accent);
   cursor: default;

@@ -38,7 +38,7 @@ const stateLabels: Record<string, string> = {
 };
 
 interface Actions {
-  onOpenFile: (path: string) => void;
+  onOpenFile: (path: string, line?: number) => void;
   onShowDiff: (path: string) => void;
 }
 type ItemActions = Actions & RequestActions;
@@ -63,7 +63,7 @@ const ItemView = memo(function ItemView({
         {item.streaming ? (
           <div className="chat-streaming">{item.text}</div>
         ) : (
-          <Markdown text={item.text} />
+          <Markdown text={item.text} onOpenFile={actions.onOpenFile} />
         )}
       </ChatMessage>
     );
