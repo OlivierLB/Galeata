@@ -9,7 +9,6 @@ import { draftSnapshot, restoreDraft, savedSnapshot, type FileDraft } from './ed
 import { Button, TextArea, TextInput } from './components/ui/Controls.tsx';
 import ChecksDialog from './components/checks/ChecksDialog.tsx';
 import ChecksStatusButton from './components/checks/ChecksStatusButton.tsx';
-import { latestMissions } from './components/AgentMonitor.tsx';
 import { readProjectSession, saveProjectSession, restoreProjectConversations, type EditorLayout } from './projectSession.ts';
 import { CountBadge } from './components/CountBadge.tsx';
 import AgentCountBadge from './components/AgentCountBadge.tsx';
@@ -1219,8 +1218,6 @@ export default function App() {
       : plan.steps;
     await savePlan({ ...plan, objective: String(event.data.objective ?? plan.objective), steps });
   }
-  const currentAgentEvents = latestMissions(activities);
-  const activeCount = currentAgentEvents.filter((event) => event.data.status === 'running').length;
   const displayFile: OpenFile | undefined = diff
     ? diff.editable && activeFile?.path === diff.path
       ? activeFile
@@ -2050,10 +2047,6 @@ export default function App() {
               {workspace ? 'Dossier local' : 'Aucun projet'}
             </span>
           )}
-          <Button onClick={() => navigate('agents')}>
-            <Icon name="agents" size={12} />
-            {activeCount ? `${activeCount} ${activeCount === 1 ? 'agent déclaré actif' : 'agents déclarés actifs'}` : 'Aucune mission déclarée active'}
-          </Button>
           <ChecksStatusButton workspaceId={workspace?.id} open={checksOpen} onClick={runVerification} />
         </div>
         <div>

@@ -76,7 +76,6 @@ export function PlanCard({ item, actions }: { item: ChatItem; actions: RequestAc
               <Button
                 variant="primary"
                 onClick={() => {
-                  actions.onSend('Mets en œuvre ce plan.');
                   actions.onAnswer(
                     item,
                     { kind: 'plan', approve: true, acceptEdits: false },

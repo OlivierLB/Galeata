@@ -6,13 +6,13 @@ import { countAgents } from '../src/agents/count.ts';
 const activity = (id, parentId, createdAt = 1) => ({ id: String(createdAt), kind: 'activity', createdAt,
   data: { sessionId: id, parentId, status: 'running' } });
 
-test('counts open tabs even idle or exited, not unrelated declared missions', () => {
+test('counts only active roots, excluding exited and idle conversations', () => {
   const store = new AgentStore();
   store.create('a', 'codex'); store.create('b', 'claude');
   store.apply('a', [{ type: 'exited', code: 0, stderr: null }]);
-  assert.deepEqual(countAgents(store.getAll(), [activity('unrelated', 'other')]), { tabs: 2, subagents: 0, total: 2 });
-  store.remove('b');
-  assert.equal(countAgents(store.getAll(), []).total, 1);
+  assert.deepEqual(countAgents(store.getAll(), [activity('unrelated', 'other')]), { tabs: 1, subagents: 0, total: 1 });
+  store.apply('b', [{ type: 'state', state: 'idle' }]);
+  assert.equal(countAgents(store.getAll(), []).total, 0);
 });
 test('deduplicates tool reports, mission updates, nested children and children opened as tabs', () => {
   const store = new AgentStore(); store.create('parent', 'codex');
@@ -41,6 +41,6 @@ test('supports mixed providers without counting control calls or double-counting
     { type: 'toolStarted', itemId, title, tool: 'agent', path: null },
     { type: 'toolCompleted', itemId, ok: true, output },
   ]);
-  assert.equal(countAgents(store.getAll(), []).total, 4);
+  assert.equal(countAgents(store.getAll(), []).total, 3);
   assert.equal(countAgents(store.getAll(), [activity('claude-child', 'claude')]).total, 4);
 });

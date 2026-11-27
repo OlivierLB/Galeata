@@ -794,3 +794,45 @@ fn galeata_plan_tool_calls_stay_out_of_the_conversation() {
         "les autres outils MCP restent visibles"
     );
 }
+
+#[test]
+fn host_plan_bookkeeping_is_allowed_but_other_tools_still_ask() {
+    let mut claude = Claude::new("/w");
+    let out = claude.handle_line(r#"{"type":"control_request","request_id":"p","request":{"subtype":"can_use_tool","tool_name":"mcp__galeata__plan_update_step","input":{"id":"s","status":"done"}}}"#);
+    assert!(out.events.is_empty());
+    assert_eq!(
+        json(&out.writes[0])["response"]["response"]["behavior"],
+        "allow"
+    );
+    let out = claude.handle_line(r#"{"type":"control_request","request_id":"b","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}}"#);
+    assert!(out
+        .events
+        .iter()
+        .any(|event| matches!(event, AgentEvent::Approval { .. })));
+}
+
+#[test]
+fn images_use_each_providers_native_blocks_and_survive_codex_startup_queue() {
+    let image = "data:image/png;base64,aGVsbG8=".to_owned();
+    let mut claude = Claude::new("/w");
+    let out = claude.send_images("Describe", std::slice::from_ref(&image));
+    let message = json(&out.writes[0]);
+    assert_eq!(
+        message["message"]["content"][1]["source"]["media_type"],
+        "image/png"
+    );
+    assert_eq!(
+        message["message"]["content"][1]["source"]["data"],
+        "aGVsbG8="
+    );
+    let mut codex = Codex::new("/w", None);
+    codex.start();
+    assert!(codex
+        .send_images("Describe", std::slice::from_ref(&image))
+        .writes
+        .is_empty());
+    codex.handle_line(r#"{"id":1,"result":{}}"#);
+    let ready = codex.handle_line(r#"{"id":2,"result":{"thread":{"id":"t1","model":"m"}}}"#);
+    let turn = json(ready.writes.last().unwrap());
+    assert_eq!(turn["params"]["input"][1]["imageUrl"], image);
+}

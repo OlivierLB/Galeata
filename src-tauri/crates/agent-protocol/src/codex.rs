@@ -51,7 +51,7 @@ pub struct Codex {
     thread: Option<String>,
     turn: Option<String>,
     turn_requested: bool,
-    queued: Vec<String>,
+    queued: Vec<Vec<Value>>,
     next_id: u64,
     calls: HashMap<u64, Call>,
     /// Pending server requests: opaque id → original JSON-RPC id.
@@ -128,11 +128,7 @@ impl Codex {
         if self.queued.is_empty() || self.turn.is_some() || self.turn_requested {
             return;
         }
-        let input = self
-            .queued
-            .drain(..)
-            .map(|text| json!({"type":"text","text":text}))
-            .collect::<Vec<_>>();
+        let input = self.queued.drain(..).flatten().collect::<Vec<_>>();
         self.turn_requested = true;
         self.streamed.clear();
         out.events.push(AgentEvent::TurnStarted);
@@ -716,7 +712,20 @@ impl Protocol for Codex {
 
     fn send_text(&mut self, text: &str) -> Output {
         let mut out = Output::default();
-        self.queued.push(text.to_owned());
+        self.queued.push(vec![json!({"type":"text","text":text})]);
+        self.flush(&mut out);
+        out
+    }
+
+    fn send_images(&mut self, text: &str, images: &[String]) -> Output {
+        let mut input = vec![json!({"type":"text","text":text})];
+        input.extend(
+            images
+                .iter()
+                .map(|url| json!({"type":"image","imageUrl":url})),
+        );
+        self.queued.push(input);
+        let mut out = Output::default();
         self.flush(&mut out);
         out
     }
@@ -760,7 +769,8 @@ impl Protocol for Codex {
             // Codex has no refusal message: decline, then say it as the next message.
             let out = self.respond(request_id, Decision::Deny)?;
             if !message.trim().is_empty() {
-                self.queued.push(message);
+                self.queued
+                    .push(vec![json!({"type":"text","text":message})]);
             }
             return Ok(out);
         }

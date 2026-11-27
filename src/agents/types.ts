@@ -89,6 +89,8 @@ export type AgentEvent =
 
 export interface ChatItem {
   id: string;
+  createdAt?: number;
+  images?: string[];
   kind: 'user' | 'assistant' | 'reasoning' | 'tool' | 'notice' | 'error' | 'plan' | 'question';
   text: string;
   streaming?: boolean;
