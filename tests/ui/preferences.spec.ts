@@ -11,7 +11,7 @@ test('preferences are a modal over the current view with only settings', async (
   await expect(dialog).toBeVisible();
   await expect(dialog).toHaveJSProperty('open', true);
   expect(await dialog.evaluate(element => element.matches(':modal'))).toBe(true);
-  await expect(dialog.getByRole('radiogroup')).toHaveCount(1);
+  await expect(dialog.getByRole('radiogroup')).toHaveCount(2);
   await expect(dialog).not.toContainText('MCP interne');
   await expect(dialog).not.toContainText('Raccourcis');
   await expect(dialog).not.toContainText('Un espace local');
@@ -29,16 +29,23 @@ test('preferences are a modal over the current view with only settings', async (
   await expect(files).toBeVisible();
 });
 
-test('preferences retain appearance settings without duplicating agent controls', async ({ page }) => {
+test('preferences retain appearance and default agent settings', async ({ page }) => {
   await page.goto('/');
   const trigger = page.getByRole('button', { name: 'Préférences', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Préférences', exact: true });
-  await expect(dialog.getByRole('heading', { name: 'Conversations' })).toHaveCount(0);
-  await expect(dialog.getByRole('radiogroup', { name: 'Agent par défaut' })).toHaveCount(0);
+  const agents = dialog.getByRole('radiogroup', { name: 'Agent par défaut' });
+  await agents.getByRole('radio', { name: 'Codex', exact: true }).click();
+  await expect(agents.getByRole('radio', { name: 'Codex', exact: true })).toHaveAttribute('aria-checked', 'true');
   await dialog.getByRole('radio', { name: 'Charbon', exact: true }).click();
   await page.keyboard.press('Escape');
   await page.reload();
   await trigger.click();
   await expect(dialog.getByRole('radio', { name: 'Charbon', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await expect(agents.getByRole('radio', { name: 'Codex', exact: true })).toHaveAttribute('aria-checked', 'true');
+  await agents.getByRole('radio', { name: 'Claude Code', exact: true }).click();
+  await page.keyboard.press('Escape');
+  await page.reload();
+  await trigger.click();
+  await expect(agents.getByRole('radio', { name: 'Claude Code', exact: true })).toHaveAttribute('aria-checked', 'true');
 });

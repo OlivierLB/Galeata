@@ -161,11 +161,12 @@ test('l’IA au centre : conversation rejouée, outil, autorisation et code à l
   expect(errors).toEqual([]);
 });
 
-test('les préférences ne dupliquent pas les réglages des agents', async ({ page }) => {
+test('les préférences proposent le choix de l’agent par défaut', async ({ page }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Préférences', exact: true }).click();
-  await expect(page.getByRole('radiogroup', { name: 'Agent par défaut' })).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Conversations', exact: true })).toHaveCount(0);
+  const dialog = page.getByRole('dialog', { name: 'Préférences', exact: true });
+  await expect(dialog.getByRole('radiogroup', { name: 'Agent par défaut' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'Conversations', exact: true })).toBeVisible();
 });
 
 test('le diff de travail se modifie directement', async ({ page }) => {
