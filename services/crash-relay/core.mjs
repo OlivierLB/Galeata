@@ -5,6 +5,7 @@ const integer = value => Number.isSafeInteger(value) && value >= 0;
 const token = (value, pattern, limit) => typeof value === 'string' && value.length <= limit && pattern.test(value);
 const symbol = value => token(value, /^(galeata_lib|galeata_agent_protocol)::[a-zA-Z0-9_:<> ,{}$.-]+$/, 240);
 const operations = new Set(['startup', 'exit', 'panic', 'request.unknown',
+  'webview.crashed', 'webview.memory_limit', 'webview.terminated', 'webview.monitor_failed', 'webview.recovery_started', 'webview.recovery_failed',
   'activity.list', 'activity.report', 'agent.answer', 'agent.close', 'agent.compact', 'agent.interrupt', 'agent.list', 'agent.mode', 'agent.model', 'agent.models', 'agent.respond', 'agent.send', 'agent.skills', 'agent.start',
   'git.branches', 'git.diff', 'git.editor_diff', 'git.get_diff', 'git.get_status', 'git.mutate', 'git.overview', 'git.status', 'git.worktrees',
   'mcp.config', 'plan.get', 'plan.propose_change', 'plan.save', 'plan.set', 'plan.update_step', 'preferences.get', 'preferences.save', 'providers.list',

@@ -1031,6 +1031,7 @@ name = "galeata"
 version = "0.1.0"
 dependencies = [
  "galeata-agent-protocol",
+ "gtk",
  "keyring",
  "nix 0.29.0",
  "notify",

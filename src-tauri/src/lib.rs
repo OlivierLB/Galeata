@@ -14,6 +14,7 @@ mod skills;
 pub mod store;
 mod terminal;
 mod tool_config;
+mod webview_recovery;
 pub mod workspace;
 
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
@@ -630,7 +631,11 @@ async fn open_workspace(app: tauri::AppHandle, path: String) -> Result<Value> {
 }
 
 #[tauri::command]
-fn startup_project() -> Option<String> {
+fn startup_project(app: tauri::AppHandle) -> Option<String> {
+    // Renderer recovery keeps the backend alive: reopen its current project.
+    if let Ok(workspace) = app.state::<Arc<State>>().current() {
+        return Some(workspace.root.to_string_lossy().into_owned());
+    }
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         if arg == "--project" {
@@ -658,6 +663,7 @@ fn open_project_window(path: String) -> Result<()> {
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(webview_recovery::init())
         .invoke_handler(tauri::generate_handler![
             request,
             open_workspace,
@@ -669,23 +675,6 @@ pub fn run() {
             fs::create_dir_all(&directory)?;
             diagnostics::init(directory.join("diagnostics"));
             crash::start(&directory);
-            // A crashed WebKit web process leaves a blank window behind: report it.
-            for window in app.webview_windows().values() {
-                let _ = window.with_webview(|webview| {
-                    use webkit2gtk::{WebProcessTerminationReason, WebViewExt};
-                    webview
-                        .inner()
-                        .connect_web_process_terminated(|_, reason| match reason {
-                            WebProcessTerminationReason::Crashed => {
-                                crash::webview_terminated(false)
-                            }
-                            WebProcessTerminationReason::ExceededMemoryLimit => {
-                                crash::webview_terminated(true)
-                            }
-                            _ => {}
-                        });
-                });
-            }
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;

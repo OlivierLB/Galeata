@@ -1,20 +1,7 @@
-# Sécurité
+# Sécurité / Security
 
-## Versions prises en charge
+[Français](docs/fr/security.md) · [English](docs/en/security.md)
 
-Galeata est en développement actif. Les corrections de sécurité sont appliquées
-à la branche `main` et à la dernière version publiée. Les anciennes versions
-ne reçoivent pas de correctifs séparés.
+Signalez les vulnérabilités via le [signalement privé GitHub](https://github.com/OlivierLB/Galeata/security/advisories/new). Ne publiez pas de faille ni de secret dans une issue publique.
 
-## Signaler une vulnérabilité
-
-Utilisez le [signalement privé GitHub](https://github.com/OlivierLB/Galeata/security/advisories/new).
-Ne publiez pas de faille ou de secret dans une issue ou une pull request publique.
-
-Indiquez la version ou le commit, les étapes de reproduction, l'impact possible
-et, si nécessaire, un exemple minimal sans identifiants ni données personnelles.
-Le mainteneur pourra échanger avec vous dans ce signalement privé et coordonner
-la publication de la correction. Aucun délai de réponse n'est garanti.
-
-Si un identifiant a été exposé, révoquez-le immédiatement auprès du fournisseur :
-supprimer le fichier ou le commit ne suffit pas à invalider un secret.
+Report vulnerabilities through [GitHub private vulnerability reporting](https://github.com/OlivierLB/Galeata/security/advisories/new). Do not disclose vulnerabilities or secrets in public issues.

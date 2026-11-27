@@ -79,6 +79,15 @@ test('GitHub issue receives useful details and concurrent failures do not acknow
 const native = () => ({ ...detailed(), schema: 3, reason: 'fatal_signal', panic: null, signal: 'SIGABRT',
   native: { domain: 'Gtk', level: 'ERROR', source: 'gtk/gtkiconhelper.c', line: 494, function: 'ensure_surface_for_gicon', libraries: ['libpixbufloader-svg.so'], hints: ['gtk_assertion', 'missing_library'] } });
 
+test('WebKit crash reports accept recovery metadata without accepting arbitrary operations', () => {
+  const report = { ...detailed(), schema: 3, reason: 'webview_crash', panic: null, webview: 'crashed' };
+  report.events = ['webview.crashed', 'webview.memory_limit', 'webview.terminated', 'webview.monitor_failed', 'webview.recovery_started', 'webview.recovery_failed']
+    .map(operation => ({ atMs: 123, operation, elapsedMs: 0, ok: false, code: 'NONE' }));
+  assert.deepEqual(normalizeReport(report).events, report.events);
+  report.events[0].operation = 'private.arbitrary';
+  assert.equal(normalizeReport(report), null);
+});
+
 test('schema 3 carries fatal signals, WebKit crashes and structured native errors', () => {
   const report = native(); report.native.message = '/home/user/private';
   const normalized = normalizeReport(report);

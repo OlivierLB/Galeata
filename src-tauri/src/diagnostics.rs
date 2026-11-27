@@ -40,6 +40,12 @@ pub fn record(operation: &str, elapsed_ms: u128, ok: bool) {
 fn record_with_error(operation: &str, elapsed_ms: u128, ok: bool, error: Option<&str>) {
     let safe_operation = match operation {
         "startup" | "exit" | "panic" => operation,
+        "webview.crashed"
+        | "webview.memory_limit"
+        | "webview.terminated"
+        | "webview.monitor_failed"
+        | "webview.recovery_started"
+        | "webview.recovery_failed" => operation,
         _ => operation_name(operation),
     };
     crate::crash::record_event(safe_operation, elapsed_ms, ok, error.unwrap_or("NONE"));
@@ -215,6 +221,9 @@ mod tests {
         let text = fs::read_to_string(LOG.get().unwrap().lock().unwrap().clone()).unwrap();
         assert!(text.contains("request.unknown ms="));
         assert!(text.contains("ok=false error=UNCLASSIFIED"));
+        record("webview.crashed", 0, false);
+        let text = fs::read_to_string(LOG.get().unwrap().lock().unwrap().clone()).unwrap();
+        assert!(text.contains("webview.crashed ms=0 ok=false"));
         assert!(!text.contains("secret"));
         assert!(!text.contains("forged"));
     }

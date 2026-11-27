@@ -14,7 +14,10 @@
     "package": "node scripts/package.mjs",
     "doctor": "node scripts/doctor.mjs",
     "test:ui": "playwright test",
-    "test:components": "vitest run"
+    "test:components": "vitest run",
+    "docs:translate": "python3 scripts/translate-docs.py",
+    "docs:check": "node scripts/check-docs.mjs",
+    "docs:check-translations": "python3 scripts/translate-docs.py --check && node scripts/check-docs.mjs --translations"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.8.0",

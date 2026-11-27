@@ -5,6 +5,20 @@ on:
 permissions:
   contents: read
 jobs:
+  documentation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm ci
+      # No model, credentials or translation API for pull requests.
+      - run: npm run docs:check
+      - run: python3 -m unittest discover -s tests -p 'test_translate_docs.py' -v
+      - run: node --test tests/sync-wiki.test.mjs tests/docs.test.mjs
   crash-relay:
     runs-on: ubuntu-24.04
     steps:
