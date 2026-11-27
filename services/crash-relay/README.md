@@ -1,5 +1,37 @@
 # Signalement sans compte GitHub
 
+## Hébergement retenu : Cloudflare Workers Free
+
+Le relais privilégié est désormais dans `cloudflare/`. Il utilise un sous-domaine HTTPS gratuit `galeata-crashes.<compte>.workers.dev` : aucun serveur ni domaine acheté n’est nécessaire. Conserver le compte sur **Workers Free** ; les quotas gratuits du Worker et du Durable Object bloquent les opérations au-delà des limites. Ne pas souscrire de plan payant pour ce service.
+
+Le Worker utilise le même validateur et le même format de ticket que le relais Node. Un Durable Object avec stockage **SQLite** conserve les signatures pendant une heure, même après le redémarrage d’une instance, et borne globalement les tentatives de création de tickets à **25 par jour UTC**, erreurs GitHub comprises. Les demandes supplémentaires reçoivent 429 et restent sur le poste pour un prochain envoi. Les signatures déjà transmises reçoivent 204 sans nouveau ticket. Le stockage ne contient que les signatures, leur état et les compteurs ; les rapports complets sont transmis directement à GitHub.
+
+Une limitation Cloudflare de cinq requêtes par minute et par IP protège l’entrée (compteur approximatif par point de présence). L’IP n’est pas ajoutée au rapport ni stockée par le code du relais. Les corps sont limités à 32 Kio. L’observabilité applicative du Worker est désactivée. Un quota atteint ne produit jamais une fausse confirmation d’envoi.
+
+### Vérifications locales sans compte Cloudflare
+
+```sh
+npm ci --prefix services/crash-relay/cloudflare
+npm test --prefix services/crash-relay/cloudflare
+```
+
+Le test compile avec Wrangler épinglé puis utilise le véritable runtime `workerd` via Miniflare. L’API GitHub est simulée : validation, refus des corps trop gros, échecs/reprise, déduplication après redémarrage, concurrence, limite par client et plafond quotidien. Aucun ticket réel n’est créé.
+
+### Activation dans ton compte
+
+1. Créer ou utiliser un compte **Cloudflare Workers Free** et choisir son sous-domaine `workers.dev`.
+2. Autoriser le déploiement par un jeton Cloudflare limité aux Workers et Durable Objects du compte. Conserver le jeton dans le coffre système et le fournir temporairement à Wrangler via `CLOUDFLARE_API_TOKEN`, avec `CLOUDFLARE_ACCOUNT_ID`. Ne pas créer de fichier de jeton local, `.env` ou `.dev.vars` en clair. Aucun jeton n’est requis pour les vérifications locales ci-dessus.
+3. Lancer `npm run deploy --prefix services/crash-relay/cloudflare`. La configuration crée uniquement le Worker, son limiteur et le Durable Object SQLite disponible dans l’offre gratuite.
+4. Dans le tableau de bord Cloudflare, ajouter la variable **secrète** `GITHUB_TOKEN` (chiffrée), avec le droit Issues en écriture sur `OlivierLB/Galeata` uniquement. `GITHUB_REPOSITORY` est déjà configuré sans secret. Jusqu’à l’ajout du jeton, le relais répond 503.
+5. Vérifier `https://galeata-crashes.<compte>.workers.dev/health` : 204 confirme la présence des paramètres, pas encore les permissions GitHub. Tester un ticket réel uniquement après choix explicite du dépôt de test.
+6. Compiler l’application avec `GALEATA_CRASH_ENDPOINT=https://galeata-crashes.<compte>.workers.dev/crashes`, puis l’installer. Le client utilise un User-Agent Galeata explicite pour les clients automatisés sur `workers.dev`.
+
+Le déploiement n’est pas activé par la simple compilation locale. Il nécessite ton compte et le secret GitHub côté Cloudflare. Une réponse GitHub perdue après création d’un ticket peut exceptionnellement produire un doublon à la reprise ; le protocole de création d’issue n’est pas strictement idempotent.
+
+Références : [Workers Free](https://developers.cloudflare.com/workers/platform/pricing/), [SQLite Durable Objects gratuits](https://developers.cloudflare.com/durable-objects/platform/pricing/), [adresse workers.dev et User-Agent](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/).
+
+## Rapports et détection
+
 L’application laisse un marqueur par processus et le retire à la sortie normale. Au lancement suivant, les marqueurs dont le processus a disparu deviennent des rapports en attente. Plusieurs fenêtres actives ne sont pas considérées comme des crashs. Un arrêt forcé ou système est signalé comme fermeture anormale, sans prétendre en connaître la cause.
 
 Le rapport enrichi (schéma 2) contient :
@@ -24,7 +56,7 @@ Le relais écoute par défaut uniquement sur `127.0.0.1:8787`. `GET /health` ret
 
 Les fichiers `galeata-crash-relay.service` et `nginx.conf.example` fournissent une base pour un serveur Linux avec Node 24, nginx et systemd prenant en charge `LoadCredentialEncrypted` et `%d` (systemd 252 ou plus récent).
 
-1. Copier `server.mjs` sous `/opt/galeata-crash-relay/`, accessible en lecture par le service.
+1. Copier `server.mjs` et `core.mjs` sous `/opt/galeata-crash-relay/`, accessibles en lecture par le service.
 2. Créer le secret chiffré dans `/etc/credstore.encrypted/galeata-github-token` avec `systemd-creds encrypt --name=github-token - /etc/credstore.encrypted/galeata-github-token`, en fournissant le jeton sur l’entrée standard depuis le coffre du serveur. Ne pas le mettre dans l’historique du shell ni dans le dépôt.
 3. Installer l’unité systemd, puis lancer `systemctl daemon-reload` et `systemctl enable --now galeata-crash-relay`.
 4. Adapter le domaine et les certificats HTTPS du modèle nginx, puis vérifier `nginx -t` avant rechargement. Le modèle borne le débit et la taille des rapports ; les accès HTTP ne sont pas journalisés.

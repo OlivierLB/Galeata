@@ -1,0 +1,14 @@
+{
+  "name": "galeata-crash-worker",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "npm run check && node --test worker.test.mjs",
+    "check": "WRANGLER_SEND_METRICS=false wrangler deploy --dry-run --outdir .wrangler/build",
+    "deploy": "WRANGLER_SEND_METRICS=false wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.168.0",
+    "miniflare": "5.20261123.1-beta"
+  }
+}

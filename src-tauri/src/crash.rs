@@ -327,7 +327,19 @@ fn transmit(directory: &Path, endpoint: &str) {
         let Some(report) = read_report(&entry.path()) else {
             continue;
         };
-        if client.post(endpoint).send_json(&report).is_ok() {
+        if client
+            .post(endpoint)
+            .set(
+                "User-Agent",
+                concat!(
+                    "Galeata/",
+                    env!("CARGO_PKG_VERSION"),
+                    " (+https://github.com/OlivierLB/Galeata)"
+                ),
+            )
+            .send_json(&report)
+            .is_ok()
+        {
             let _ = fs::remove_file(entry.path());
         }
     }
