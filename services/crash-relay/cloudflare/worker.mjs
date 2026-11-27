@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import { MAX_BODY, normalizeReport, reportSignature, issueBody } from '../core.mjs';
+import { MAX_BODY, normalizeReport, reportSignature, issueBody, issueTitle } from '../core.mjs';
 
 const reply = status => new Response(null, { status, headers: { 'Cache-Control': 'no-store' } });
 const configured = env => Boolean(env.GITHUB_TOKEN && /^[\w.-]+\/[\w.-]+$/.test(env.GITHUB_REPOSITORY ?? '') && env.CRASH_REPORTS && env.CLIENT_LIMITER);
@@ -158,7 +158,7 @@ export class CrashReports extends DurableObject {
       const response = await fetch(`https://api.github.com/repos/${this.env.GITHUB_REPOSITORY}/issues`, {
         method: 'POST', signal: AbortSignal.timeout(10_000),
         headers: this.headers(),
-        body: JSON.stringify({ title: `${data.reason === 'rust_panic' ? 'Panique Rust' : 'Fermeture anormale'} — Galeata ${data.version} [${signature}]`, body: `${issueBody(data, signature)}\n\n${counterBlock(1)}` }),
+        body: JSON.stringify({ title: issueTitle(data, signature), body: `${issueBody(data, signature)}\n\n${counterBlock(1)}` }),
       });
       if (!response.ok) { await response.body?.cancel(); throw new Error('GitHub request failed'); }
       const issue = await response.json();

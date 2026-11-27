@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRelay, normalizeReport, reportSignature } from '../services/crash-relay/server.mjs';
+import { issueBody, issueTitle } from '../services/crash-relay/core.mjs';
 
 test('anonymous relay validates metadata, strips extra fields, deduplicates and retries failures', async () => {
   const calls = [];
@@ -73,4 +74,39 @@ test('GitHub issue receives useful details and concurrent failures do not acknow
     assert.match(requests[1].body, /workspace.read/);
     assert.match(requests[1].body, /abcdef123456/);
   } finally { await new Promise(resolve => server.close(resolve)); }
+});
+
+const native = () => ({ ...detailed(), schema: 3, reason: 'fatal_signal', panic: null, signal: 'SIGABRT',
+  native: { domain: 'Gtk', level: 'ERROR', source: 'gtk/gtkiconhelper.c', line: 494, function: 'ensure_surface_for_gicon', libraries: ['libpixbufloader-svg.so'], hints: ['gtk_assertion', 'missing_library'] } });
+
+test('schema 3 carries fatal signals, WebKit crashes and structured native errors', () => {
+  const report = native(); report.native.message = '/home/user/private';
+  const normalized = normalizeReport(report);
+  assert.equal(normalized.signal, 'SIGABRT');
+  assert.equal(normalized.native.source, 'gtk/gtkiconhelper.c');
+  assert.ok(!JSON.stringify(normalized).includes('private'));
+  assert.match(issueTitle(normalized, 'x'), /^Signal fatal SIGABRT/);
+  assert.match(issueBody(normalized, 'x'), /Gtk ERROR gtk\/gtkiconhelper\.c:494 ensure_surface_for_gicon/);
+  assert.match(issueBody(normalized, 'x'), /libpixbufloader-svg\.so/);
+  const other = native(); other.native.line = 495;
+  assert.notEqual(reportSignature(normalized), reportSignature(normalizeReport(other)));
+  const webview = { ...detailed(), schema: 3, reason: 'webview_crash', panic: null, webview: 'crashed' };
+  assert.match(issueTitle(normalizeReport(webview), 'x'), /WebKit/);
+  const legacy = detailed();
+  assert.equal(normalizeReport(legacy).schema, 2);
+  assert.equal(reportSignature(normalizeReport(legacy)), reportSignature(legacy));
+});
+
+test('schema 3 refuses unknown signals, free-text native fields and inconsistent reasons', () => {
+  for (const mutate of [
+    data => { data.signal = 'SIGTERM'; },
+    data => { data.signal = null; },
+    data => { data.native.source = '/home/user/x.c'; },
+    data => { data.native.source = '../x.c'; },
+    data => { data.native.function = 'free text here'; },
+    data => { data.native.libraries = ['/home/user/libx.so']; },
+    data => { data.native.hints = ['anything']; },
+    data => { data.webview = 'crashed'; },
+    data => { data.schema = 2; },
+  ]) { const report = native(); mutate(report); assert.equal(normalizeReport(report), null, JSON.stringify(report.native)); }
 });

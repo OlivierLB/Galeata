@@ -15,6 +15,20 @@ if ! flock -n 9; then
     printf 'Une installation Galeata est déjà en cours ; attente de sa fin.\n'
     flock 9
 fi
+# Crash relay address: kept out of the sources, read from the repository's
+# Actions variable when gh is authenticated. Without it, reports stay local.
+if [ -z "${GALEATA_CRASH_ENDPOINT:-}" ] && command -v gh >/dev/null 2>&1; then
+    GALEATA_CRASH_ENDPOINT=$(timeout 10 gh api repos/OlivierLB/Galeata/actions/variables/GALEATA_CRASH_ENDPOINT --jq .value 2>/dev/null || true)
+    case "$GALEATA_CRASH_ENDPOINT" in
+        https://*/crashes) export GALEATA_CRASH_ENDPOINT ;;
+        *) GALEATA_CRASH_ENDPOINT="" ;;
+    esac
+fi
+if [ -n "${GALEATA_CRASH_ENDPOINT:-}" ]; then
+    printf 'Rapports de crash : envoyés au relais.\n'
+else
+    printf 'Rapports de crash : conservés en local (relais non configuré).\n'
+fi
 sh "$root/scripts/build-linux-docker.sh"
 GALEATA_DOWNLOAD_URL="file://$root/release-local" sh "$root/install.sh"
 

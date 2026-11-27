@@ -28,6 +28,26 @@ struct Report {
     reason: String,
     panic: Option<PanicDetails>,
     events: Vec<TechnicalEvent>,
+    /// Fatal signal name (schema 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    signal: Option<String>,
+    /// WebKit web process termination: `crashed` or `memory_limit` (schema 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    webview: Option<String>,
+    /// Structured GTK/GLib error read back from the dead process' journal (schema 3).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    native: Option<NativeError>,
+}
+/// Only identifiers survive: domain, C source location, library file names and hints.
+#[derive(Clone, Default, Debug, PartialEq, Serialize, Deserialize)]
+struct NativeError {
+    domain: Option<String>,
+    level: Option<String>,
+    source: Option<String>,
+    line: Option<u32>,
+    function: Option<String>,
+    libraries: Vec<String>,
+    hints: Vec<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct PanicDetails {
@@ -92,7 +112,7 @@ fn new_report() -> Report {
         .take(32)
         .collect();
     Report {
-        schema: 2,
+        schema: 3,
         report_id: uuid::Uuid::new_v4().to_string(),
         version: env!("CARGO_PKG_VERSION").into(),
         build: env!("GALEATA_BUILD_REVISION").into(),
@@ -114,6 +134,9 @@ fn new_report() -> Report {
         reason: "abnormal_exit".into(),
         panic: None,
         events: Vec::new(),
+        signal: None,
+        webview: None,
+        native: None,
     }
 }
 fn refresh(runtime: &mut Runtime) {
@@ -295,17 +318,349 @@ fn recover(directory: &Path) {
         {
             continue;
         }
-        if count < 16 {
-            let report = marker
+        let signal = signals::read(directory, pid);
+        if signal.is_some_and(signals::is_termination) {
+            // A requested stop (logout, kill, Ctrl+C) is not a crash: keep it local only.
+            if let Some(mut report) = marker.map(|marker| marker.report) {
+                report.signal = signal.map(|signal| signals::name(signal).into());
+                report.reason = "terminated".into();
+                let _ = fs::write(
+                    directory.join(format!("local-{}.json", report.report_id)),
+                    serde_json::to_vec(&report).unwrap_or_default(),
+                );
+            }
+        } else if count < 16 {
+            let mut report = marker
                 .map(|marker| marker.report)
                 .or_else(|| read_report(&entry.path()))
                 .unwrap_or_else(new_report);
+            if report.reason == "abnormal_exit" {
+                if let Some(signal) = signal {
+                    report.reason = "fatal_signal".into();
+                    report.signal = Some(signals::name(signal).into());
+                }
+            }
+            if report.reason != "rust_panic" && report.started_at_ms > 0 {
+                report.native = journal_native(pid, report.started_at_ms, report.observed_at_ms);
+            }
             let target = directory.join(format!("pending-{}.json", report.report_id));
             if fs::write(target, serde_json::to_vec(&report).unwrap_or_default()).is_ok() {
                 count += 1;
             }
         }
         let _ = fs::remove_file(entry.path());
+        let _ = fs::remove_file(signals::path(directory, pid));
+    }
+    prune(directory, "local-", 8);
+    // Signal files whose process is gone and had no marker.
+    for entry in fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .take(128)
+    {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if let Some(pid) = name
+            .strip_prefix("signal-")
+            .and_then(|s| s.parse::<u32>().ok())
+        {
+            if process_identity(pid).is_none() {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+fn prune(directory: &Path, prefix: &str, keep: usize) {
+    let mut files: Vec<_> = fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with(prefix))
+        .collect();
+    files.sort_by_key(|entry| std::cmp::Reverse(entry.metadata().and_then(|m| m.modified()).ok()));
+    for entry in files.into_iter().skip(keep) {
+        let _ = fs::remove_file(entry.path());
+    }
+}
+/// Reads the dead process' own journal lines (GTK writes its fatal errors to
+/// stderr, which the desktop session forwards to the user journal).
+fn journal_native(pid: u32, started_at_ms: u64, observed_at_ms: u64) -> Option<NativeError> {
+    let pid = format!("_PID={pid}");
+    let since = format!("--since=@{}", started_at_ms / 1000);
+    let until = format!("--until=@{}", observed_at_ms / 1000 + 30);
+    let (output, _, _) = crate::workspace::run_outcome(
+        Path::new("/"),
+        "journalctl",
+        &[
+            "--user",
+            "--quiet",
+            "--no-pager",
+            "--output=cat",
+            "--lines=200",
+            &since,
+            &until,
+            &pid,
+        ],
+        &[0, 1],
+        Duration::from_secs(3),
+        256 * 1024,
+    )
+    .ok()?;
+    parse_native(&output)
+}
+fn identifier(value: &str, extra: &str, limit: usize) -> Option<String> {
+    (!value.is_empty()
+        && value.len() <= limit
+        && value
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || extra.contains(c)))
+    .then(|| value.to_owned())
+}
+fn libraries(line: &str, found: &mut Vec<String>) {
+    for (start, _) in line.match_indices("lib") {
+        if start > 0 && line[..start].ends_with(|c: char| c.is_ascii_alphanumeric() || c == '_') {
+            continue;
+        }
+        let rest = &line[start..];
+        let Some(end) = rest.find(".so") else {
+            continue;
+        };
+        let mut name = rest[..end + 3].to_owned();
+        let mut tail = rest[end + 3..].chars().peekable();
+        while tail.peek() == Some(&'.') {
+            let version: String = tail
+                .clone()
+                .skip(1)
+                .take_while(char::is_ascii_digit)
+                .collect();
+            if version.is_empty() {
+                break;
+            }
+            name.push('.');
+            name.push_str(&version);
+            tail.nth(version.len());
+        }
+        if identifier(&name, "+-.", 80).is_some()
+            && name[3..end]
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "_+-".contains(c))
+            && !found.contains(&name)
+            && found.len() < 8
+        {
+            found.push(name);
+        }
+    }
+}
+fn parse_native(journal: &str) -> Option<NativeError> {
+    let mut best: Option<(u8, NativeError)> = None;
+    let mut libs = Vec::new();
+    let mut hints: Vec<&str> = Vec::new();
+    let mut hint = |value: &'static str| {
+        if !hints.contains(&value) {
+            hints.push(value);
+        }
+    };
+    for raw in journal.lines().take(400) {
+        let line = raw.trim().trim_start_matches("Bail out! ");
+        if line.contains(".so") {
+            libraries(line, &mut libs);
+            let lower = line.to_lowercase();
+            if [
+                "no such file",
+                "aucun fichier",
+                "cannot open",
+                "ne peut ouvrir",
+            ]
+            .iter()
+            .any(|s| lower.contains(s))
+            {
+                hint("missing_library");
+            }
+        }
+        if line.contains("Error reading events from display") || line.contains("X connection to") {
+            hint("x_io_error");
+        }
+        if line.contains("X Window System error") {
+            hint("x_protocol_error");
+        }
+        if line.contains("Wayland compositor") || line.contains("dispatching to Wayland display") {
+            hint("wayland_disconnected");
+        }
+        // `Domain:ERROR:file.c:123:function: message` (g_assert family).
+        let parts: Vec<&str> = line.splitn(6, ':').collect();
+        let mut candidate = None;
+        if parts.len() >= 5
+            && matches!(parts[1], "ERROR" | "CRITICAL")
+            && parts[3].parse::<u32>().is_ok()
+        {
+            let source = parts[2].trim_start_matches("../").trim_start_matches("./");
+            candidate = Some((
+                if parts[1] == "ERROR" { 3 } else { 2 },
+                NativeError {
+                    domain: identifier(parts[0], "-", 40),
+                    level: Some(parts[1].into()),
+                    source: identifier(source, "./-", 120).filter(|s| {
+                        !s.contains("..")
+                            && [".c", ".cpp", ".cc", ".h"].iter().any(|e| s.ends_with(e))
+                    }),
+                    line: parts[3].parse().ok(),
+                    function: identifier(parts[4].trim(), "", 80),
+                    ..NativeError::default()
+                },
+            ));
+            if candidate.as_ref().is_some_and(|(_, e)| {
+                e.domain
+                    .as_deref()
+                    .is_some_and(|d| d.starts_with("Gtk") || d.starts_with("Gdk"))
+            }) {
+                hint("gtk_assertion");
+            }
+        } else if let Some(position) = ["-ERROR **", "-CRITICAL **"]
+            .iter()
+            .find_map(|m| line.find(m).map(|p| (p, *m)))
+        {
+            // `(prog:pid): Domain-CRITICAL **: time: function: message` (g_log family).
+            let (at, marker) = position;
+            let domain = line[..at].rsplit([' ', ')']).next().unwrap_or("");
+            let message = line[at + marker.len()..].trim_start_matches(':').trim();
+            let message = message.split_once(": ").map_or(message, |(time, rest)| {
+                if time
+                    .chars()
+                    .all(|c| c.is_ascii_digit() || c == ':' || c == '.')
+                {
+                    rest
+                } else {
+                    message
+                }
+            });
+            let function = message
+                .split_once(':')
+                .map(|(f, _)| f.trim())
+                .and_then(|f| identifier(f, "", 80));
+            let level = if marker.starts_with("-ERROR") {
+                "ERROR"
+            } else {
+                "CRITICAL"
+            };
+            candidate = Some((
+                if level == "ERROR" { 3 } else { 2 },
+                NativeError {
+                    domain: identifier(domain, "-", 40),
+                    level: Some(level.into()),
+                    function,
+                    ..NativeError::default()
+                },
+            ));
+        }
+        if let Some((rank, error)) = candidate {
+            if best.as_ref().is_none_or(|(current, _)| rank >= *current) {
+                best = Some((rank, error));
+            }
+        }
+    }
+    let hints: Vec<String> = hints.into_iter().take(5).map(String::from).collect();
+    if best.is_none() && libs.is_empty() && hints.is_empty() {
+        return None;
+    }
+    let mut error = best.map(|(_, error)| error).unwrap_or_default();
+    error.libraries = libs;
+    error.hints = hints;
+    Some(error)
+}
+/// Async-signal-safe recording of the signal that kills the process: one byte
+/// written to a file opened beforehand, then the previous disposition runs.
+mod signals {
+    use nix::libc::{self, c_int, c_void};
+    use std::{
+        os::fd::IntoRawFd,
+        path::{Path, PathBuf},
+        sync::{
+            atomic::{AtomicI32, Ordering},
+            OnceLock,
+        },
+    };
+    const WATCHED: [c_int; 9] = [
+        libc::SIGSEGV,
+        libc::SIGABRT,
+        libc::SIGBUS,
+        libc::SIGILL,
+        libc::SIGFPE,
+        libc::SIGQUIT,
+        libc::SIGTERM,
+        libc::SIGHUP,
+        libc::SIGINT,
+    ];
+    static FD: AtomicI32 = AtomicI32::new(-1);
+    static PREVIOUS: OnceLock<[(c_int, libc::sigaction); 9]> = OnceLock::new();
+
+    pub fn path(directory: &Path, pid: u32) -> PathBuf {
+        directory.join(format!("signal-{pid}"))
+    }
+    pub fn name(signal: c_int) -> &'static str {
+        match signal {
+            libc::SIGSEGV => "SIGSEGV",
+            libc::SIGABRT => "SIGABRT",
+            libc::SIGBUS => "SIGBUS",
+            libc::SIGILL => "SIGILL",
+            libc::SIGFPE => "SIGFPE",
+            libc::SIGQUIT => "SIGQUIT",
+            libc::SIGTERM => "SIGTERM",
+            libc::SIGHUP => "SIGHUP",
+            _ => "SIGINT",
+        }
+    }
+    pub fn is_termination(signal: c_int) -> bool {
+        matches!(signal, libc::SIGTERM | libc::SIGHUP | libc::SIGINT)
+    }
+    pub fn read(directory: &Path, pid: u32) -> Option<c_int> {
+        let byte = *std::fs::read(path(directory, pid)).ok()?.first()?;
+        WATCHED
+            .contains(&c_int::from(byte))
+            .then_some(c_int::from(byte))
+    }
+    extern "C" fn on_signal(signal: c_int, info: *mut libc::siginfo_t, _: *mut c_void) {
+        let fd = FD.load(Ordering::Relaxed);
+        if fd >= 0 {
+            let byte = signal as u8;
+            // SAFETY: pwrite and sigaction are async-signal-safe; no allocation or lock.
+            unsafe { libc::pwrite(fd, (&byte as *const u8).cast(), 1, 0) };
+        }
+        let previous = PREVIOUS
+            .get()
+            .and_then(|all| all.iter().find(|(s, _)| *s == signal).map(|(_, a)| *a));
+        unsafe {
+            match previous {
+                Some(action) => libc::sigaction(signal, &action, std::ptr::null_mut()),
+                None => {
+                    libc::signal(signal, libc::SIG_DFL);
+                    0
+                }
+            };
+            // A hardware fault repeats on return and reaches the previous handler;
+            // a signal sent by a process (kill, abort) must be raised again.
+            if info.is_null() || (*info).si_code <= 0 {
+                libc::raise(signal);
+            }
+        }
+    }
+    pub fn install(directory: &Path) {
+        let Ok(file) = std::fs::File::create(path(directory, std::process::id())) else {
+            return;
+        };
+        FD.store(file.into_raw_fd(), Ordering::Relaxed);
+        // SAFETY: plain libc calls on zero-initialised sigaction structures.
+        unsafe {
+            let mut action: libc::sigaction = std::mem::zeroed();
+            action.sa_sigaction = on_signal as *const () as usize;
+            action.sa_flags = libc::SA_SIGINFO | libc::SA_ONSTACK;
+            libc::sigemptyset(&mut action.sa_mask);
+            let mut previous: [(c_int, libc::sigaction); 9] = std::mem::zeroed();
+            for (slot, signal) in previous.iter_mut().zip(WATCHED) {
+                slot.0 = signal;
+                libc::sigaction(signal, &action, &mut slot.1);
+            }
+            let _ = PREVIOUS.set(previous);
+        }
     }
 }
 fn transmit(directory: &Path, endpoint: &str) {
@@ -344,27 +699,55 @@ fn transmit(directory: &Path, endpoint: &str) {
         }
     }
 }
-/// Public relay of the project, used by every build (local ones included)
-/// unless `GALEATA_CRASH_ENDPOINT` names another HTTPS relay at compile time.
-#[cfg(not(test))]
-const DEFAULT_ENDPOINT: Option<&str> =
-    Some("https://galeata-crashes.lebloas-olivier.workers.dev/crashes");
-// Tests never reach the network.
-#[cfg(test)]
-const DEFAULT_ENDPOINT: Option<&str> = None;
-
 fn endpoint() -> Option<&'static str> {
-    option_env!("GALEATA_CRASH_ENDPOINT")
-        .filter(|url| url.starts_with("https://"))
-        .or(DEFAULT_ENDPOINT)
+    option_env!("GALEATA_CRASH_ENDPOINT").filter(|url| url.starts_with("https://"))
 }
-
+/// The WebKit web process died while the window survived (blank page): report
+/// it immediately instead of waiting for the next launch.
+pub fn webview_terminated(memory_limit: bool) {
+    static REPORTED: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+    if REPORTED.fetch_add(1, std::sync::atomic::Ordering::Relaxed) >= 3 {
+        return;
+    }
+    let Some(runtime) = RUNTIME.get() else {
+        return;
+    };
+    let Ok(mut runtime) = runtime.lock() else {
+        return;
+    };
+    refresh(&mut runtime);
+    let mut report = runtime.report.clone();
+    report.report_id = uuid::Uuid::new_v4().to_string();
+    report.reason = "webview_crash".into();
+    report.webview = Some(
+        if memory_limit {
+            "memory_limit"
+        } else {
+            "crashed"
+        }
+        .into(),
+    );
+    report.panic = None;
+    let Some(directory) = runtime.marker.parent().map(Path::to_path_buf) else {
+        return;
+    };
+    drop(runtime);
+    if fs::write(
+        directory.join(format!("pending-{}.json", report.report_id)),
+        serde_json::to_vec(&report).unwrap_or_default(),
+    )
+    .is_ok()
+    {
+        if let Some(endpoint) = endpoint() {
+            std::thread::spawn(move || transmit(&directory, endpoint));
+        }
+    }
+}
 pub fn start(directory: &Path) {
     let directory = directory.join("crashes");
     if fs::create_dir_all(&directory).is_err() {
         return;
     }
-    recover(&directory);
     let marker = directory.join(format!("running-{}.json", std::process::id()));
     if fs::write(&marker, b"{}").is_err() {
         return;
@@ -379,9 +762,15 @@ pub fn start(directory: &Path) {
     if RUNTIME.set(Mutex::new(runtime)).is_err() {
         return;
     }
-    if let Some(endpoint) = endpoint() {
-        std::thread::spawn(move || transmit(&directory, endpoint));
-    }
+    signals::install(&directory);
+    // Recovery reads the journal: keep it off the startup path.
+    let background = directory.clone();
+    std::thread::spawn(move || {
+        recover(&background);
+        if let Some(endpoint) = endpoint() {
+            transmit(&background, endpoint);
+        }
+    });
     std::thread::spawn(move || loop {
         std::thread::sleep(Duration::from_secs(15));
         let Some(runtime) = RUNTIME.get() else {
@@ -413,6 +802,9 @@ pub fn clean_exit() {
         }
     }
     let _ = fs::remove_file(&runtime.marker);
+    if let Some(directory) = runtime.marker.parent() {
+        let _ = fs::remove_file(signals::path(directory, std::process::id()));
+    }
 }
 #[cfg(test)]
 mod tests {
@@ -456,7 +848,7 @@ mod tests {
                 let mut bytes = vec![0; length];
                 reader.read_exact(&mut bytes).unwrap();
                 let data: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
-                assert_eq!(data["schema"], 2);
+                assert_eq!(data["schema"], 3);
                 assert!(data.get("identity").is_none());
                 write!(
                     stream,
@@ -517,6 +909,100 @@ mod tests {
         assert_eq!(report.reason, "rust_panic");
         assert_eq!(report.events.last().unwrap().operation, "workspace.read");
         assert!(report.panic.unwrap().source.unwrap().ends_with("crash.rs"));
+    }
+    fn child(term: bool) -> (tempfile::TempDir, PathBuf) {
+        let directory = tempfile::tempdir().unwrap();
+        let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+        command
+            .args(["--exact", "crash::tests::child_signal_fixture"])
+            .env("GALEATA_CRASH_TEST_DIRECTORY", directory.path());
+        if term {
+            command.env("GALEATA_CRASH_TEST_TERM", "1");
+        }
+        assert!(!command.output().unwrap().status.success());
+        let reports = directory.path().join("crashes");
+        recover(&reports);
+        (directory, reports)
+    }
+    fn files(directory: &Path, prefix: &str) -> Vec<String> {
+        fs::read_dir(directory)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().starts_with(prefix))
+            .map(|e| fs::read_to_string(e.path()).unwrap_or_default())
+            .collect()
+    }
+    #[test]
+    fn child_signal_fixture() {
+        let Some(directory) = std::env::var_os("GALEATA_CRASH_TEST_DIRECTORY") else {
+            return;
+        };
+        start(Path::new(&directory));
+        if std::env::var_os("GALEATA_CRASH_TEST_TERM").is_some() {
+            unsafe { nix::libc::raise(nix::libc::SIGTERM) };
+        }
+        std::process::abort();
+    }
+    #[test]
+    fn native_abort_is_reported_with_its_signal() {
+        let (_directory, reports) = child(false);
+        let pending = files(&reports, "pending-");
+        assert_eq!(pending.len(), 1);
+        let report: Report = serde_json::from_str(&pending[0]).unwrap();
+        assert_eq!(report.reason, "fatal_signal");
+        assert_eq!(report.signal.as_deref(), Some("SIGABRT"));
+        assert!(files(&reports, "signal-").is_empty());
+    }
+    #[test]
+    fn requested_termination_stays_local() {
+        let (_directory, reports) = child(true);
+        assert!(files(&reports, "pending-").is_empty());
+        let local: Report = serde_json::from_str(&files(&reports, "local-")[0]).unwrap();
+        assert_eq!(local.reason, "terminated");
+        assert_eq!(local.signal.as_deref(), Some("SIGTERM"));
+    }
+    #[test]
+    fn gtk_assertion_from_the_journal_keeps_only_identifiers() {
+        let journal = concat!(
+            "Could not load a pixbuf from icon theme.\n**\n",
+            "Gtk:ERROR:../../../../gtk/gtkiconhelper.c:494:ensure_surface_for_gicon: assertion failed (error == NULL): ",
+            "Failed to load /usr/share/icons/Pop/16x16/status/image-missing.svg: Impossible de charger le module de chargement d’images : ",
+            "libpixbufloader-svg.so : libpixbufloader-svg.so: Ne peut ouvrir le fichier d'objet partagé: Aucun fichier ou dossier de ce nom\n",
+            "Bail out! Gtk:ERROR:../../../../gtk/gtkiconhelper.c:494:ensure_surface_for_gicon: assertion failed: /home/private/data\n",
+            "Failed to load module \"canberra-gtk-module\""
+        );
+        let error = parse_native(journal).unwrap();
+        assert_eq!(
+            error,
+            NativeError {
+                domain: Some("Gtk".into()),
+                level: Some("ERROR".into()),
+                source: Some("gtk/gtkiconhelper.c".into()),
+                line: Some(494),
+                function: Some("ensure_surface_for_gicon".into()),
+                libraries: vec!["libpixbufloader-svg.so".into()],
+                hints: vec!["missing_library".into(), "gtk_assertion".into()],
+            }
+        );
+        assert!(!serde_json::to_string(&error).unwrap().contains("private"));
+        let critical = parse_native(
+            "(galeata:42): Gtk-CRITICAL **: 15:07:30.123: gtk_widget_show: assertion 'GTK_IS_WIDGET (widget)' failed",
+        )
+        .unwrap();
+        assert_eq!(critical.domain.as_deref(), Some("Gtk"));
+        assert_eq!(critical.level.as_deref(), Some("CRITICAL"));
+        assert_eq!(critical.function.as_deref(), Some("gtk_widget_show"));
+        assert_eq!(
+            parse_native(
+                "Failed to load module \"canberra-gtk-module\"\nFailed to set scheduler settings"
+            ),
+            None
+        );
+        let x = parse_native(
+            "Gdk-Message: 15:42:03.000: galeata: Error reading events from display: Broken pipe",
+        )
+        .unwrap();
+        assert_eq!(x.hints, vec!["x_io_error".to_string()]);
     }
     #[test]
     fn private_paths_and_payloads_are_not_stack_frames() {
