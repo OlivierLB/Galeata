@@ -30,6 +30,7 @@ pub fn init(directory: PathBuf) {
     let previous = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         record("panic", 0, false);
+        crate::crash::capture_panic(info);
         previous(info);
     }));
 }
@@ -37,6 +38,11 @@ pub fn record(operation: &str, elapsed_ms: u128, ok: bool) {
     record_with_error(operation, elapsed_ms, ok, None);
 }
 fn record_with_error(operation: &str, elapsed_ms: u128, ok: bool, error: Option<&str>) {
+    let safe_operation = match operation {
+        "startup" | "exit" | "panic" => operation,
+        _ => operation_name(operation),
+    };
+    crate::crash::record_event(safe_operation, elapsed_ms, ok, error.unwrap_or("NONE"));
     let Some(log) = LOG.get() else {
         return;
     };
@@ -169,6 +175,8 @@ impl Drop for Span {
         let elapsed = self.started.elapsed().as_millis();
         if !self.ok || elapsed >= 250 {
             record_with_error(self.operation, elapsed, self.ok, self.error);
+        } else {
+            crate::crash::record_event(self.operation, elapsed, self.ok, "NONE");
         }
     }
 }
