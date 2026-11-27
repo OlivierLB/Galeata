@@ -68,7 +68,7 @@ export function installAdditionalLanguages() {
         style: [[/<\/style\s*>/i, { token: '@rematch', next: '@pop', nextEmbedded: '@pop' }]],
         expression: [[id === 'vue' ? /\}\}/ : /\}/, { token: 'delimiter', next: '@pop', nextEmbedded: '@pop' }]],
         tag: [[/\s+/, ''], [/[\w:@#.[\]-]+/, 'attribute.name'], [/=/, 'delimiter'], [/"[^"]*"|'[^']*'/, 'attribute.value'], [/\/?>/, 'tag', '@pop'], [/./, '']],
-        htmlComment: [[/-->/, 'comment', '@pop'], [/[^-]+/, 'comment'], [/./, 'comment']],
+        htmlComment: [[/--!?>/, 'comment', '@pop'], [/[^-]+/, 'comment'], [/./, 'comment']],
       },
     });
   }
