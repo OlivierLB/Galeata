@@ -20,8 +20,8 @@ test('les icônes affichées utilisent le catalogue Doodle local', async ({ page
   await expect(page.locator('.monaco-editor').first()).toBeVisible();
   await page.locator('.monaco-editor textarea').first().focus();
   await page.keyboard.press('Control+f');
-  const editorIcon = page.locator('.monaco-editor .codicon').first();
+  const editorIcon = page.locator('.monaco-editor .codicon[class*="codicon-"]').first();
   await expect(editorIcon).toBeAttached();
-  expect(await editorIcon.evaluate(node => getComputedStyle(node, '::before').maskImage))
+  await expect.poll(() => editorIcon.evaluate(node => getComputedStyle(node, '::before').maskImage))
     .toContain('/icons/doodle/');
 });
