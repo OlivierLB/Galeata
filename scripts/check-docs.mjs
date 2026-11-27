@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { marked } from 'marked';
 
 export function headingSlug(text) {
-  return text.replace(/<[^>]+>/g, '').trim().toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-');
+  return text.replace(/[<>]/g, '').trim().toLowerCase().replace(/[^\p{L}\p{N}_ -]/gu, '').replaceAll(' ', '-');
 }
 
 export function inspectMarkdown(text) {
