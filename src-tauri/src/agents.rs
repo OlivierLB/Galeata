@@ -223,8 +223,28 @@ fn with_agent<T>(agents: &Agents, id: &str, f: impl FnOnce(&Agent) -> Result<T>)
     f(&agent)
 }
 
-pub fn send(agents: &Agents, id: &str, text: &str) -> Result<Value> {
-    with_agent(agents, id, |agent| agent.send_text(&format!("{text}\n\n[Galeata : après ce message, lisez plan.get, ajoutez les nouvelles tâches sans doublons et préservez les tâches terminées. Actualisez plan.update_step au début et à la fin de chaque tâche, avant votre réponse finale.]"))).map(|_| Value::Null)
+pub fn send(agents: &Agents, id: &str, text: &str, images: &Value) -> Result<Value> {
+    let images: Vec<String> = if images.is_null() {
+        Vec::new()
+    } else {
+        serde_json::from_value(images.clone()).map_err(|_| "Images invalides")?
+    };
+    if images.len() > 4
+        || images.iter().any(|image| {
+            image.len() > 7_000_000
+                || ![
+                    "data:image/png;base64,",
+                    "data:image/jpeg;base64,",
+                    "data:image/webp;base64,",
+                    "data:image/gif;base64,",
+                ]
+                .iter()
+                .any(|prefix| image.starts_with(prefix))
+        })
+    {
+        return Err("Maximum 4 images de 5 Mo (PNG, JPEG, WebP ou GIF)".into());
+    }
+    with_agent(agents, id, |agent| agent.send_images(&format!("{text}\n\n[Galeata : après ce message, lisez plan.get, ajoutez les nouvelles tâches sans doublons et préservez les tâches terminées. Actualisez plan.update_step au début et à la fin de chaque tâche, avant votre réponse finale.]"), &images)).map(|_| Value::Null)
 }
 
 pub fn respond(agents: &Agents, id: &str, request: &str, decision: &str) -> Result<Value> {

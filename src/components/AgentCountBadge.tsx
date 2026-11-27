@@ -7,5 +7,5 @@ import { CountBadge } from './CountBadge.tsx';
 export default function AgentCountBadge({ events }: { events: Activity[] }) {
   const snapshot = useCallback(() => countAgents(agentStore.getAll(), events).total, [events]);
   const total = useSyncExternalStore(agentStore.subscribe, snapshot);
-  return total ? <CountBadge count={total} label="onglets et sous-agents" placement="navigation" /> : null;
+  return total ? <CountBadge count={total} label="agents et sous-agents actifs" placement="navigation" /> : null;
 }

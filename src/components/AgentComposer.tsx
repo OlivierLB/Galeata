@@ -20,11 +20,29 @@ export function AgentComposer({
   children,
 }: {
   conversation: Conversation;
-  onSend: (text: string) => Promise<void>;
+  onSend: (text: string, images?: string[]) => Promise<void>;
   children: ReactNode;
 }) {
   const { id, provider, state, busy, mode } = conversation;
   const [draft, setDraft] = useState(() => agentStore.getDraft(id));
+  const [images, setImages] = useState<string[]>(() => agentStore.getImageDraft(id));
+  useEffect(() => { agentStore.setImageDraft(id, images); }, [id, images]);
+  const imageInput = useRef<HTMLInputElement>(null);
+  async function addImages(files: File[]) {
+    try {
+      if (files.length + images.length > 4) throw new Error('Maximum 4 images par message.');
+      const added = await Promise.all(files.map(file => new Promise<string>((resolve, reject) => {
+        if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+          reject(new Error('Images PNG, JPEG, WebP ou GIF de 5 Mo maximum.')); return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Lecture de l’image impossible.'));
+        reader.readAsDataURL(file);
+      })));
+      setImages(previous => [...previous, ...added].slice(0, 4));
+    } catch (reason) { setError(String(reason)); }
+  }
   const [menu, setMenu] = useState<Menu | null>(null);
   const [query, setQuery] = useState('');
   const [selected, setSelected] = useState(0);
@@ -207,7 +225,7 @@ export function AgentComposer({
 
   async function send() {
     const text = draft.trim();
-    if (!text || exited || sending) return;
+    if ((!text && !images.length) || exited || sending) return;
     if (text === '/compact') {
       if (canCompact) {
         update('');
@@ -225,7 +243,8 @@ export function AgentComposer({
     update('');
     close();
     try {
-      await onSend(text);
+      await onSend(text, images);
+      setImages([]);
     } catch (reason) {
       if (!agentStore.getDraft(id)) update(text);
       setError(String(reason));
@@ -234,7 +253,7 @@ export function AgentComposer({
     }
   }
   function enqueue() {
-    if (!draft.trim() || exited || sending) return;
+    if (!draft.trim() || images.length || exited || sending) return;
     try {
       agentStore.enqueue(id, draft);
       update('');
@@ -308,7 +327,15 @@ export function AgentComposer({
     }
   }
   return (
-    <div className={`chat-composer ${mode === 'plan' ? 'composer-planning' : ''}`}>
+    <div className={`chat-composer ${mode === 'plan' ? 'composer-planning' : ''}`}
+      onDragOver={event => { if (event.dataTransfer.types.includes('Files')) event.preventDefault(); }}
+      onDrop={event => { event.preventDefault(); if (!exited && !sending) void addImages(Array.from(event.dataTransfer.files)); }}
+      onPaste={event => {
+        const files = Array.from(event.clipboardData.files);
+        if (files.length && !exited && !sending) { event.preventDefault(); void addImages(files); }
+      }}>
+      <input type="file" ref={imageInput} hidden accept="image/png,image/jpeg,image/webp,image/gif" multiple onChange={event => { void addImages(Array.from(event.target.files ?? [])); event.target.value = ''; }} />
+      {images.length ? <div className="composer-images">{images.map((src, index) => <div key={index}><img src={src} alt={`Image jointe ${index + 1}`} /><Button aria-label={`Retirer l’image ${index + 1}`} onClick={() => setImages(previous => previous.filter((_, i) => i !== index))}>Retirer</Button></div>)}</div> : null}
       {conversation.queuedMessages.length ? (
         <MessageQueue messages={conversation.queuedMessages} paused={conversation.queuePaused} exited={exited}
           onPause={paused => agentStore.pauseQueue(id, paused)}
@@ -438,6 +465,7 @@ export function AgentComposer({
       ) : null}
       <div className="composer-bar">
         <div className="composer-tools" aria-label="Actions du message">
+          <Button disabled={exited || sending || images.length >= 4} onClick={() => imageInput.current?.click()}>Image</Button>
           <Button
             type="button"
             disabled={exited}
@@ -485,14 +513,14 @@ export function AgentComposer({
           <Button
             className="text-button"
             title="Envoyer après la fin complète du tour précédent (Tab)"
-            disabled={!draft.trim() || exited || sending}
+            disabled={!draft.trim() || images.length > 0 || exited || sending}
             onClick={enqueue}
           >
             Mettre en file <kbd>Tab</kbd>
           </Button>
           <Button
             variant="primary"
-            disabled={!draft.trim() || exited || sending}
+            disabled={(!draft.trim() && !images.length) || exited || sending}
             onClick={() => void send()}
           >
             Envoyer <Icon name="arrow" size={14} />

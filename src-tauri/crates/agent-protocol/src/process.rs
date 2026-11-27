@@ -135,6 +135,12 @@ impl Agent {
         self.apply(out);
         Ok(())
     }
+    pub fn send_images(&self, text: &str, images: &[String]) -> Result<(), String> {
+        self.ensure_alive()?;
+        let out = self.protocol()?.send_images(text, images);
+        self.apply(out);
+        Ok(())
+    }
 
     pub fn respond(&self, request_id: &str, decision: Decision) -> Result<(), String> {
         self.ensure_alive()?;

@@ -41,9 +41,9 @@ export async function startAgent(provider: Provider, resumeId?: string, mode?: s
   return id;
 }
 
-export async function sendToAgent(id: string, text: string) {
+export async function sendToAgent(id: string, text: string, images: string[] = []) {
   agentStore.sending(id);
-  agentStore.addUser(id, text);
+  agentStore.addUser(id, text, images);
   if (agentStore.get(id)?.demo) {
     agentStore.apply(id, [{ type: 'turnStarted' }, { type: 'state', state: 'working' }]);
     void demoTurn(id).catch((error) => {
@@ -53,7 +53,7 @@ export async function sendToAgent(id: string, text: string) {
     return;
   }
   try {
-    await request('agent.send', { id, text });
+    await request('agent.send', { id, text, images });
   } catch (error) {
     agentStore.sendFailed(id);
     throw error;

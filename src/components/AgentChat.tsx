@@ -55,11 +55,11 @@ const ItemView = memo(function ItemView({
   if (item.kind === 'question') return <QuestionCard item={item} actions={actions} />;
   if (item.kind === 'user')
     return (
-      <ChatMessage side="user">{item.text}</ChatMessage>
+      <ChatMessage side="user" createdAt={item.createdAt}>{item.text}{item.images?.map((src, index) => <img className="chat-image" key={index} src={src} alt={`Image jointe ${index + 1}`} />)}</ChatMessage>
     );
   if (item.kind === 'assistant')
     return (
-      <ChatMessage side="assistant">
+      <ChatMessage side="assistant" createdAt={item.createdAt}>
         {item.streaming ? (
           <div className="chat-streaming">{item.text}</div>
         ) : (
@@ -95,6 +95,7 @@ const ItemView = memo(function ItemView({
         <span className={`tool-dot ${status}`} />
         <span className="tool-kind">{toolLabels[item.tool ?? 'other']}</span>
         <span className="tool-title">{item.title || item.path || ''}</span>
+        {item.createdAt ? <time className="chat-time" dateTime={new Date(item.createdAt).toISOString()} title={new Date(item.createdAt).toLocaleString('fr-FR')}>{new Date(item.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</time> : null}
         {relativePath ? (
           <span className="tool-actions">
             <Button
@@ -297,6 +298,8 @@ export default function AgentChat({
   const [historyWindow, setHistoryWindow] = useState({ id, count: 100 });
   const visibleCount = historyWindow.id === id ? historyWindow.count : 100;
   const stick = useRef(true);
+  const lastScroll = useRef(0);
+  const pointerDown = useRef(false);
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
   // Stable object so memoized items do not re-render when the parent does.
@@ -306,7 +309,16 @@ export default function AgentChat({
     onAnswer: (item, answer, status, summary) => {
       stick.current = true;
       // A plan that is not a request (Codex, history): nothing to answer, only mark it.
-      if (item.status === 'ready') return agentStore.markAnswered(id, item.id, status, summary);
+      if (item.status === 'ready') {
+        void (async () => {
+          if (answer.kind === 'plan' && answer.approve) {
+            await setAgentMode(id, 'default');
+            await sendToAgent(id, 'Mets en œuvre ce plan.');
+          }
+          agentStore.markAnswered(id, item.id, status, summary);
+        })().catch(error => agentStore.apply(id, [{ type: 'error', message: String(error) }]));
+        return;
+      }
       void answerAgent(id, item.requestId ?? item.id, answer, status, summary).catch((error) =>
         agentStore.apply(id, [{ type: 'error', message: String(error) }]),
       );
@@ -321,7 +333,9 @@ export default function AgentChat({
 
   useLayoutEffect(() => {
     const element = scroller.current;
-    if (element && stick.current) element.scrollTop = element.scrollHeight;
+    if (element && !pointerDown.current && Date.now() - lastScroll.current > 3000) {
+      element.scrollTop = element.scrollHeight;
+    }
   }, [conversation, showTools]);
 
   if (!conversation) return null;
@@ -333,7 +347,15 @@ export default function AgentChat({
       <div
         className="chat-scroll"
         ref={scroller}
+        onWheel={() => { lastScroll.current = Date.now(); }}
+        onTouchMove={() => { lastScroll.current = Date.now(); }}
+        onPointerDown={() => { pointerDown.current = true; lastScroll.current = Date.now(); }}
+        onPointerUp={() => { pointerDown.current = false; lastScroll.current = Date.now(); }}
+        onPointerCancel={() => { pointerDown.current = false; }}
+        onPointerLeave={() => { pointerDown.current = false; }}
+        onKeyDown={(event) => { if (['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)) lastScroll.current = Date.now(); }}
         onScroll={(event) => {
+          if (pointerDown.current) lastScroll.current = Date.now();
           const element = event.currentTarget;
           stick.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48;
         }}
@@ -381,9 +403,9 @@ export default function AgentChat({
       </div>
       <AgentComposer
         conversation={conversation}
-        onSend={async (text) => {
+        onSend={async (text, images) => {
           stick.current = true;
-          await sendToAgent(id, text);
+          await sendToAgent(id, text, images);
         }}
       >
         <ModelSwitch conversation={conversation} />
