@@ -1764,7 +1764,7 @@ export default function App() {
                 missionEvents={activities}
                 missionPlan={plan}
                 sessions={sessions}
-                onOpenFile={(path) => void openFile(path)}
+                onOpenFile={(path, line) => void openFile(path, line)}
                 onShowDiff={(path) => void showDiff(path)}
                 onOpenTerminal={(provider, sessionId) => launchAgent(provider, sessionId)}
                 defaultAgent={defaultAgent}

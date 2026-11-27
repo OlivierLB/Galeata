@@ -7,6 +7,7 @@ mod diagnostics;
 mod git;
 mod language;
 mod mcp;
+mod opener;
 mod remote;
 mod sessions;
 mod skills;
@@ -504,6 +505,10 @@ impl State {
                     json!({"workspaceId":w.id,"method":method,"args":args}),
                 );
                 Ok(json!({"presented":true}))
+            }
+            "system.open_url" if !agent => {
+                opener::open_url(required(&args, "url")?)?;
+                Ok(json!({"opened":true}))
             }
             "remote.connection" if !agent => remote::connection(&self.store, &w),
             "remote.connect" if !agent => remote::connect(&self.store, &w, &args),

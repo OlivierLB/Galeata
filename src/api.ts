@@ -21,6 +21,14 @@ export async function request<T>(method: string, args: Record<string, unknown> =
     return invoke<T>('request', { method, args, workspaceId });
   });
 }
+/** Opens a web link in the system browser (never inside the app window). */
+export async function openExternal(url: string): Promise<void> {
+  if (!desktop) {
+    window.open(url, '_blank', 'noopener,noreferrer');
+    return;
+  }
+  await request('system.open_url', { url });
+}
 export async function openWorkspace(path?: string): Promise<Workspace | null> {
   if (!desktop) {
     setActiveWorkspace(previewWorkspace);
