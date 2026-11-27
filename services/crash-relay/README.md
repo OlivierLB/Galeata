@@ -4,7 +4,7 @@
 
 Le relais privilégié est désormais dans `cloudflare/`. Il utilise un sous-domaine HTTPS gratuit `galeata-crashes.<compte>.workers.dev` : aucun serveur ni domaine acheté n’est nécessaire. Conserver le compte sur **Workers Free** ; les quotas gratuits du Worker et du Durable Object bloquent les opérations au-delà des limites. Ne pas souscrire de plan payant pour ce service.
 
-Le Worker utilise le même validateur et le même format de ticket que le relais Node. Un Durable Object avec stockage **SQLite** conserve les signatures pendant une heure, même après le redémarrage d’une instance, et borne globalement les tentatives de création de tickets à **25 par jour UTC**, erreurs GitHub comprises. Les demandes supplémentaires reçoivent 429 et restent sur le poste pour un prochain envoi. Les signatures déjà transmises reçoivent 204 sans nouveau ticket. Le stockage ne contient que les signatures, leur état et les compteurs ; les rapports complets sont transmis directement à GitHub.
+Le Worker utilise le même validateur et le même format de ticket que le relais Node. Un Durable Object avec stockage **SQLite** conserve jusqu’à 10 000 signatures sans expiration, même après redémarrage, et borne globalement les tentatives d’écriture GitHub (créations et compteurs) à **25 par jour UTC**, erreurs comprises. Une limite de stockage atteinte refuse les nouvelles signatures avec 429, sans effacer les groupes existants. Les demandes supplémentaires reçoivent 429 et restent sur le poste pour un prochain envoi. Les signatures déjà transmises reçoivent 204 sans nouveau ticket. Le stockage ne contient que les signatures, numéros d’issues, identifiants aléatoires des rapports, états et compteurs ; les rapports complets sont transmis directement à GitHub.
 
 Une limitation Cloudflare de cinq requêtes par minute et par IP protège l’entrée (compteur approximatif par point de présence). L’IP n’est pas ajoutée au rapport ni stockée par le code du relais. Les corps sont limités à 32 Kio. L’observabilité applicative du Worker est désactivée. Un quota atteint ne produit jamais une fausse confirmation d’envoi.
 
@@ -23,12 +23,32 @@ Le test compile avec Wrangler épinglé puis utilise le véritable runtime `work
 2. Autoriser le déploiement par un jeton Cloudflare limité aux Workers et Durable Objects du compte. Conserver le jeton dans le coffre système et le fournir temporairement à Wrangler via `CLOUDFLARE_API_TOKEN`, avec `CLOUDFLARE_ACCOUNT_ID`. Ne pas créer de fichier de jeton local, `.env` ou `.dev.vars` en clair. Aucun jeton n’est requis pour les vérifications locales ci-dessus.
 3. Lancer `npm run deploy --prefix services/crash-relay/cloudflare`. La configuration crée uniquement le Worker, son limiteur et le Durable Object SQLite disponible dans l’offre gratuite.
 4. Dans le tableau de bord Cloudflare, ajouter la variable **secrète** `GITHUB_TOKEN` (chiffrée), avec le droit Issues en écriture sur `OlivierLB/Galeata` uniquement. `GITHUB_REPOSITORY` est déjà configuré sans secret. Jusqu’à l’ajout du jeton, le relais répond 503.
-5. Vérifier `https://galeata-crashes.<compte>.workers.dev/health` : 204 confirme la présence des paramètres, pas encore les permissions GitHub. Tester un ticket réel uniquement après choix explicite du dépôt de test.
+5. Vérifier `/health` (configuration présente), puis `/ready` : lecture GitHub authentifiée sans création de ticket, résultat mis en cache 15 minutes dans le Durable Object. Un jeton révoqué ou expirant dans moins de 14 jours produit 503. Le droit Issues en écriture n’est pas prouvé par cette lecture ; le valider une fois par un ticket de test explicite. Si GitHub ne fournit pas l’en-tête d’expiration, renseigner `GITHUB_TOKEN_EXPIRES_AT` (date ISO) dans les variables Cloudflare. Sans date disponible, seule la validité actuelle est contrôlée.
 6. Compiler l’application avec `GALEATA_CRASH_ENDPOINT=https://galeata-crashes.<compte>.workers.dev/crashes`, puis l’installer. Le client utilise un User-Agent Galeata explicite pour les clients automatisés sur `workers.dev`.
 
 Le déploiement n’est pas activé par la simple compilation locale. Il nécessite ton compte et le secret GitHub côté Cloudflare. Une réponse GitHub perdue après création d’un ticket peut exceptionnellement produire un doublon à la reprise ; le protocole de création d’issue n’est pas strictement idempotent.
 
 Références : [Workers Free](https://developers.cloudflare.com/workers/platform/pricing/), [SQLite Durable Objects gratuits](https://developers.cloudflare.com/durable-objects/platform/pricing/), [adresse workers.dev et User-Agent](https://developers.cloudflare.com/workers/configuration/routing/workers-dev/).
+
+## Exploitation automatisée sans abonnement supplémentaire
+
+Le dépôt public utilise les runners Linux standards de GitHub Actions et le compte Cloudflare **Workers Free** existant. Ne pas activer Workers Paid, de runner payant ni de produit payant. Les limites gratuites restent applicables.
+
+Dans GitHub → Settings → Secrets and variables → Actions, configurer :
+
+- `GALEATA_CRASH_ENDPOINT` : adresse HTTPS finissant par `/crashes`, transmise à la compilation des releases. Une publication par tag échoue si elle manque.
+- `CLOUDFLARE_ACCOUNT_ID` : identifiant du seul compte de déploiement.
+- `CLOUDFLARE_API_TOKEN` : jeton dédié au compte, droits Workers Scripts Edit et Account Settings Read. Le limiter à ce compte et lui donner une expiration. Ne pas réutiliser une clé globale ni transmettre le jeton dans une conversation.
+
+Ces valeurs ne sont pas enregistrées dans les fichiers suivis. L’adresse du relais devient nécessairement visible dans le binaire distribué. `GITHUB_TOKEN` demeure exclusivement dans les secrets du Worker ; le workflow de déploiement ne le remplace pas.
+
+Le workflow `Crash relay` teste les PR sans secrets, puis déploie les modifications du relais sur `main` seulement après ses tests. Un lancement manuel depuis `main` permet un redéploiement. Le contrôle quotidien appelle `/ready` et échoue en cas d’indisponibilité, de jeton invalide ou d’expiration proche. Activer les notifications personnelles GitHub Actions pour recevoir les échecs : GitHub → Settings → Notifications → Actions. Les exécutions planifiées dépendent de GitHub ; elles peuvent être retardées et désactivées après une longue inactivité du dépôt public.
+
+Les occurrences alimentent une même issue, même fermée, sans la rouvrir automatiquement. Une alarme regroupe les mises à jour du compteur à intervalle horaire, avec reprise en cas d’échec ou de quota atteint. Elle conserve le texte de l’issue et remplace seulement le bloc de compteur. Les rapports de schéma 2 sont dédupliqués par identifiant pendant 30 jours (100 000 identifiants maximum). Les anciens rapports sans identifiant peuvent compter leurs réessais. Le compteur indique donc les rapports reçus, pas un nombre garanti de plantages distincts. Aucun rapport complet n’est conservé dans le Durable Object.
+
+Lors de la migration, les anciennes signatures sans numéro d’issue restent dédupliquées pendant leur heure de validité ; leur issue n’est pas importée automatiquement. Une réponse GitHub perdue après création peut encore exceptionnellement produire un doublon.
+
+Références : [déploiement GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/), [quotas Workers](https://developers.cloudflare.com/workers/platform/limits/), [notifications Actions](https://docs.github.com/en/account-and-profile/managing-subscriptions-and-notifications-on-github/setting-up-notifications/configuring-notifications).
 
 ## Rapports et détection
 
