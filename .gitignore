@@ -14,3 +14,5 @@ test-results/
 *.sock
 .DS_Store
 release-local/
+/services/crash-relay/cloudflare/.wrangler/
+/services/crash-relay/cloudflare/.dev.vars*

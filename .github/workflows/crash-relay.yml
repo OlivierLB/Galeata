@@ -1,0 +1,65 @@
+name: Crash relay
+on:
+  push:
+    branches: [main]
+    paths: ['services/crash-relay/**', '.github/workflows/crash-relay.yml']
+  pull_request:
+    paths: ['services/crash-relay/**', '.github/workflows/crash-relay.yml']
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crash-relay-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  test:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm ci --prefix services/crash-relay/cloudflare
+      - run: npm test --prefix services/crash-relay/cloudflare
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+      - run: npm ci --prefix services/crash-relay/cloudflare
+      - name: Deploy on existing Workers Free account
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test -n "$CLOUDFLARE_API_TOKEN" && test -n "$CLOUDFLARE_ACCOUNT_ID"
+          npm run deploy --prefix services/crash-relay/cloudflare
+  monitor:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    steps:
+      - name: Check relay and GitHub authentication without creating a ticket
+        env:
+          CRASH_ENDPOINT: ${{ secrets.GALEATA_CRASH_ENDPOINT }}
+        run: |
+          case "$CRASH_ENDPOINT" in
+            https://*/crashes) ;;
+            *) echo 'Crash endpoint missing or invalid'; exit 1 ;;
+          esac
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' --max-time 30 \
+            --user-agent 'Galeata-monitor' "${CRASH_ENDPOINT%/crashes}/ready")
+          test "$status" = 204 || { echo 'Relay unavailable, GitHub authentication failed or token expires soon'; exit 1; }

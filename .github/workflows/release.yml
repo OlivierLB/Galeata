@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-22.04 # oldest supported glibc: the build runs on newer distributions too
     env:
       APPIMAGE_EXTRACT_AND_RUN: '1'
+      GALEATA_CRASH_ENDPOINT: ${{ secrets.GALEATA_CRASH_ENDPOINT }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -45,6 +46,13 @@ jobs:
             if (tag && tag !== "v" + [...unique][0]) { console.error(`Tag ${tag} ≠ version ${[...unique][0]}`); process.exit(1); }
             fs.writeFileSync("VERSION", "v" + [...unique][0]);
             console.log("Version", [...unique][0]);'
+      - name: Require crash relay for published releases
+        if: github.ref_type == 'tag'
+        run: |
+          case "$GALEATA_CRASH_ENDPOINT" in
+            https://*/crashes) ;;
+            *) echo 'Crash endpoint missing or invalid'; exit 1 ;;
+          esac
       - run: npm ci
       - run: npm run package -- --bundles appimage,deb
       - run: node scripts/check-package.mjs
